@@ -1,3 +1,4 @@
+import os
 from images.image_loader  import ImageLoader
 from images.image_label_pair  import ImageLabelPair
 import random
@@ -17,7 +18,7 @@ class Slicer():
       If use_standard_axis is True, then use the 3 standard unit vectors instead.
     - sample_slice(): returns a pair of image, label images at a random slice.
     - save_batch_to_folder(batch): saves all images and labels in a given batch as .png images, 
-      in a folder called slicer_batches/images/ and /labels.
+      in folders slicer_batches/images/ and slicer_batches/labels.
 
     TODO:
     - Generate n random unit vectors in initialize_views()
@@ -43,11 +44,11 @@ class Slicer():
         dims = pair.dims
 
         # TODO generalize this instead of hardcoded slicing.
-        if view == self.views[0]:
+        if np.array_equal(view, self.views[0]):
             slice_index = np.random.randint(0, dims[2])
             image_slice = pair.image[:, :, slice_index]
             label_slice = pair.label[:, :, slice_index]
-        elif view == self.views[1]:
+        elif np.array_equal(view, self.views[1]):
             slice_index = np.random.randint(0, dims[1])
             image_slice = pair.image[:, slice_index, :]
             label_slice = pair.label[:, slice_index, :]
@@ -80,6 +81,6 @@ class Slicer():
             
         for i in range(len(batch)):
             image, label = batch[i]
-            plt.imsave(os.path.join(batch_path,"images", "image" + str(i) + "png"), image)
-            plt.imsave(os.path.join(batch_path,"labels", "label" + str(i) + "png"), image)
+            plt.imsave(os.path.join(batch_path,"images", "image" + str(i) + ".png"), image, cmap='Greys_r')
+            plt.imsave(os.path.join(batch_path,"labels", "label" + str(i) + ".png"), label, cmap='Greys_r')
         
