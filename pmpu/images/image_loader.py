@@ -36,7 +36,7 @@ class ImageLoader():
             index += 1
             return ImageLabelPair(image.get_fdata(), label.get_fdata())
         except FileNotFoundError:
-            print("image{}.nii not found in {} subfolders.".format(index, self.path))
+            print("Image at index {} not found in {} subfolders.".format(index, self.path))
             return None
 
     def get_random_pair(self):
