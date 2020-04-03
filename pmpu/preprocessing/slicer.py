@@ -4,6 +4,7 @@ from images.image_label_pair  import ImageLabelPair
 import random
 import uuid
 import PIL
+import png
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -33,8 +34,8 @@ class Slicer():
         self.views = self.initialize_views(use_standard_axis=True)
         self.batch_count = 0
         self.out_path = out_path
-        self.out_image_path = out_image_path
-        self.out_label_path = out_label_path
+        self.out_image_path = os.path.join(out_path, out_image_path)
+        self.out_label_path = os.path.join(out_path, out_label_path)
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
@@ -70,8 +71,13 @@ class Slicer():
     def make_batch(self, batch_size):
         batch = []
 
-        for i in range(batch_size):
-            batch.append(self.sample_slice())
+        i = 0
+        while (i <= batch_size):
+            image_pair = self.sample_slice()
+            # Filter applied. Only save images with foreground in labels
+            if np.max(image_pair[1]) > 0:
+                batch.append(image_pair)
+                i += 1
 
         self.batch_count += 1
         return batch
@@ -80,8 +86,8 @@ class Slicer():
         if not os.path.exists(self.out_path):
             print("Creating {} folder.".format(self.out_path))
             os.makedirs(self.out_path)
-            os.makedirs(os.path.join(self.out_path, self.out_image_path))
-            os.makedirs(os.path.join(self.out_path, self.out_label_path))
+            os.makedirs(self.out_image_path)
+            os.makedirs(self.out_label_path)
             
 
         """
@@ -95,20 +101,15 @@ class Slicer():
         """
         
         for i in range(len(batch)):
-            file_name = uuid.uuid4()
+            file_name = str(uuid.uuid4())
             image, label = batch[i]
             image = (image / np.max(image)) * 255
             if np.max(label) > 0:
                 label = (label / np.max(label)) * 255
-            image = PIL.Image.fromarray(image.astype(np.uint8))
-            label = PIL.Image.fromarray(label.astype(np.uint8))
-            
-            image.save(os.path.join(self.out_path,
-                                    self.out_image_path,
-                                    str(file_name) + ".jpeg"), "JPEG")
-            label.save(os.path.join(self.out_path,
-                                    self.out_label_path,
-                                    str(file_name) + ".jpeg"), "JPEG")
+
+            # image.astype(np.uint8).copy() hacky fix. Don't know what purpose the .copy() has
+            png.from_array(image.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_image_path, file_name + ".png"))
+            png.from_array(label.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_label_path, file_name + ".png"))
 
     def pad_dimensions(self, image, label):
         dim_diff = np.max(image.shape) - np.min(image.shape)
