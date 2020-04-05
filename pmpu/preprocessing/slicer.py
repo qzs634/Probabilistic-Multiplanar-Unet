@@ -51,11 +51,11 @@ class Slicer():
         dims = pair.dims
         
         # TODO generalize this instead of hardcoded slicing.
-        if np.array_equal(view, self.views[0]):
+        if False:#np.array_equal(view, self.views[0]):
             slice_index = np.random.randint(0, dims[2])
             image_slice = pair.image[:, :, slice_index]
             label_slice = pair.label[:, :, slice_index]
-        elif np.array_equal(view, self.views[1]):
+        elif False: #np.array_equal(view, self.views[1]):
             slice_index = np.random.randint(0, dims[1])
             image_slice = pair.image[:, slice_index, :]
             label_slice = pair.label[:, slice_index, :]

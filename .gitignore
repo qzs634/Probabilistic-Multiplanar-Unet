@@ -1,5 +1,13 @@
-*/__pycache__/
-*/slicer_batches/
-*/.idea/
-*/__pycache__/
+**/__pycache__/
+**/slicer_batches/
+**/.idea/
+**/__pycache__/
 data_folder/*
+*.pyc
+data/
+__pycache__/
+checkpoints/
+*.pth
+*.jpg
+SUBMISSION*
+venv/
