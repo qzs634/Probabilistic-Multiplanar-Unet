@@ -72,7 +72,7 @@ class Slicer():
         batch = []
 
         i = 0
-        while (i <= batch_size):
+        while (i < batch_size):
             image_pair = self.sample_slice()
             # Filter applied. Only save images with foreground in labels
             if np.max(image_pair[1]) > 0:
@@ -104,9 +104,10 @@ class Slicer():
             file_name = str(uuid.uuid4())
             image, label = batch[i]
             image = (image / np.max(image)) * 255
+            """
             if np.max(label) > 0:
                 label = (label / np.max(label)) * 255
-
+            """
             # image.astype(np.uint8).copy() hacky fix. Don't know what purpose the .copy() has
             png.from_array(image.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_image_path, file_name + ".png"))
             png.from_array(label.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_label_path, file_name + ".png"))

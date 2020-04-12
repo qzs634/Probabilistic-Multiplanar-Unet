@@ -27,6 +27,9 @@ def train_net(net,
               epochs=5,
               batch_size=1,
               lr=0.001,
+              lrf=0.1,
+              lrp=2,
+              om=0.9,
               val_percent=0.1,
               save_cp=True,
               img_scale=0.5):
@@ -52,25 +55,15 @@ def train_net(net,
         Images scaling:  {img_scale}
     ''')
 
-    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=1) #'min' if net.n_classes > 1 else 'max'
-    criterion = nn.BCELoss() #nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=om)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min' if net.n_classes > 1 else 'max', factor=lrf, patience=lrp)
+    criterion = nn.BCELoss() if net.n_classes == 1 else nn.CrossEntropyLoss()
 
     for epoch in range(epochs):
         net.train()
 
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
-            """
-            Hver epoke:
-            - første fase: Kør igennem alle batches i træningsæt
-                - kør batch igennem netværk
-                - udregn loss mellem pred og true
-                - Juster netværk ud fra gradient
-            - anden fase: Valider netværk på en enkelt batch i validationsæt
-                - Kør validation igennem netværk
-                - plot metrics
-            """
             for phase in ["train", "validation"]:
                 if phase == "train":
                     for batch in train_loader:
@@ -102,9 +95,8 @@ def train_net(net,
                         pbar.update(imgs.shape[0])
 
                 elif phase == "validation":
-                    """
-                    Validation phase
-                    """
+                    logging.info("Validation round.")
+
                     optimizer.zero_grad()
                     for tag, value in net.named_parameters():
                         tag = tag.replace('.', '/')
@@ -112,64 +104,72 @@ def train_net(net,
                         if not value.grad == None:
                             writer.add_histogram('grads/' + tag, value.grad.data.cpu().numpy(), global_step)
 
-                    with tqdm(total=n_val, desc='Validation round', unit='batch') as val_pbar:
-                        net.eval()
-                        mask_type = torch.float32
-                        n_val = len(val_loader)  # the number of batch
-                        tot = 0
-                        for batch in val_loader:
-                            imgs, true_masks = batch['image'], batch['mask']
-                            imgs = imgs.to(device=device, dtype=torch.float32)
-                            true_masks = true_masks.to(device=device, dtype=mask_type)
+                    net.eval()
+                    mask_type = torch.float32 if net.n_classes == 1 else torch.long
 
-                            with torch.no_grad():
-                                mask_pred = net(imgs)
+                    n_val = len(val_loader)  # the number of batch
+                    dice_sum = 0
+                    accuracy_sum = 0
+                    sensitivity_sum = 0
+                    specificity_sum = 0
+                    for batch in val_loader:
+                        imgs, true_masks = batch['image'], batch['mask']
+                        imgs = imgs.to(device=device, dtype=torch.float32)
+                        true_masks = true_masks.to(device=device, dtype=mask_type)
 
-                            # Calculate dice score for each
-                            pred = dice_coeff((mask_pred > 0.5).float(), true_masks).item()
-                            tot += pred
+                        with torch.no_grad():
+                            mask_pred = net(imgs)
 
-                            logging.info('Validation Dice Coeff: {}'.format(pred))
-                            writer.add_scalar('metrics/dice', pred, global_step)
+                        # Calculate dice score for each
+                        if net.n_classes == 1:
+                            dice_sum += dice_coeff((mask_pred > 0.5).float(), true_masks).item()
 
-                            # Calculate validation loss
-                            loss = criterion(masks_pred, true_masks)
+                        # Calculate validation loss
+                        loss_sum += criterion(masks_pred, true_masks).item
 
-                            writer.add_scalar('Loss/validation', loss.item(), global_step)
-                            writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
+                        # Calculate accuracy, sensitivity and specificity scalars
+                        confusion_vector = torch.round(masks_pred) / true_masks
+                        true_positives = torch.sum(confusion_vector == 1).item()
+                        false_positives = torch.sum(confusion_vector == float('-inf')).item() + torch.sum(confusion_vector == float('inf')).item()
+                        true_negatives = torch.sum(torch.isnan(confusion_vector)).item()
+                        false_negatives = torch.sum(confusion_vector == 0).item()
 
-                            # Calculate accuracy, sensitivity and specificity scalars
-                            confusion_vector = torch.round(masks_pred) / true_masks
-                            true_positives = torch.sum(confusion_vector == 1).item()
-                            false_positives = torch.sum(confusion_vector == float('-inf')).item() + torch.sum(confusion_vector == float('inf')).item()
-                            true_negatives = torch.sum(torch.isnan(confusion_vector)).item()
-                            false_negatives = torch.sum(confusion_vector == 0).item()
+                        if (true_positives + true_negatives + false_negatives + false_positives) > 0:
+                            accuracy_sum += (true_positives + true_negatives) / (
+                            true_positives + true_negatives + false_positives + false_negatives)
+                        if (true_positives + false_negatives) > 0:
+                            sensitivity_sum = true_positives / (true_positives + false_negatives)
+                        if (true_negatives + false_positives) > 0:
+                            specificity_sum = true_negatives / (true_negatives + false_positives)
 
-                            # print("true positives: {}\ntrue negatives: {}\nfalse positives: {}\nfalse negatives: {}\n".format(true_positives, true_negatives, false_positives, false_negatives))
-                            if (true_positives + true_negatives + false_negatives + false_positives) > 0:
-                                accuracy = (true_positives + true_negatives) / (
-                                true_positives + true_negatives + false_positives + false_negatives)
-                                writer.add_scalar('metrics/accuracy', accuracy, global_step)
-                            if (true_positives + false_negatives) > 0:
-                                sensitivity = true_positives / (true_positives + false_negatives)
-                                writer.add_scalar('metrics/sensitivity', sensitivity, global_step)
-                            if (true_negatives + false_positives) > 0:
-                                specificity = true_negatives / (true_negatives + false_positives)
-                                writer.add_scalar('metrics/specificity', specificity, global_step)
 
-                            # Write every 100th image
-                            if (global_step % n_val-1) == 0:
-                                writer.add_images('images', imgs, global_step)
-                                if net.n_classes == 1:
-                                    writer.add_images('masks/true', true_masks, global_step)
-                                    writer.add_images('masks/pred', masks_pred > 0.5, global_step)
+                        # Write a single image during validation
+                        if (global_step % n_val) == 0:
+                            writer.add_images('images', imgs, global_step)
+                            if net.n_classes == 1:
+                                writer.add_images('masks/true', true_masks, global_step)
+                                writer.add_images('masks/pred', masks_pred > 0.5, global_step)
 
-                            global_step += 1
-                            val_pbar.update()
+                        global_step += 1
+                        pbar.update()
 
-                    #Adjust learning rate based on average dice score for epoch
-                    val_score = tot / n_val
-                    logging.info('Validation Dice Coeff: {}'.format(val_score))
+                    # write metrics
+                    avg_loss = loss_sum / n_val
+                    writer.add_scalar('Loss/validation', avg_loss, global_step)
+                    writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
+
+                    writer.add_scalar('metrics/accuracy', accuracy_sum / n_val, global_step)
+                    writer.add_scalar('metrics/sensitivity', sensitivity_sum / n_val, global_step)
+                    writer.add_scalar('metrics/specificity', specificity_sum / n_val, global_step)
+
+                    #Adjust learning rate based on metric
+                    if net.n_classes == 1:
+                        val_score = dice_sum / n_val
+                        logging.info('Validation Dice Coeff: {}'.format(val_score))
+                        writer.add_scalar('metrics/dice', val_score, global_step)
+                    else:
+                        val_score = avg_loss
+
                     scheduler.step(val_score)
 
         if save_cp:
@@ -193,13 +193,19 @@ def get_args():
                         help='Number of epochs', dest='epochs')
     parser.add_argument('-b', '--batch-size', metavar='B', type=int, nargs='?', default=1,
                         help='Batch size', dest='batchsize')
-    parser.add_argument('-l', '--learning-rate', metavar='LR', type=float, nargs='?', default=0.1,
+    parser.add_argument('-l', '--learning-rate', metavar='LR', type=float, nargs='?', default=0.001,
                         help='Learning rate', dest='lr')
+    parser.add_argument('-r', '--schedule-factor', metavar='LRF', type=float, nargs='?', default=0.1,
+                        help='Learning rate scheduler factor', dest='lrf')
+    parser.add_argument('-p', '--schedule-patience', metavar='LRP', type=int, nargs='?', default=2,
+                        help='Learning rate scheduler patience', dest='lrp')
+    parser.add_argument('-o', '--optimizer-momentum', metavar='OM', type=float, nargs='?', default=0.9,
+                        help='Optimizer momentum', dest='om')
     parser.add_argument('-f', '--load', dest='load', type=str, default=False,
                         help='Load model from a .pth file')
-    parser.add_argument('-s', '--scale', dest='scale', type=float, default=0.5,
+    parser.add_argument('-s', '--scale', dest='scale', type=float, default=1,
                         help='Downscaling factor of the images')
-    parser.add_argument('-v', '--validation', dest='val', type=float, default=10.0,
+    parser.add_argument('-v', '--validation', dest='val', type=float, default=20.0,
                         help='Percent of the data that is used as validation (0-100)')
 
     return parser.parse_args()
@@ -238,6 +244,9 @@ if __name__ == '__main__':
                   epochs=args.epochs,
                   batch_size=args.batchsize,
                   lr=args.lr,
+                  lrf=args.lrf,
+                  lrp=args.lrp,
+                  om=args.om,
                   device=device,
                   img_scale=args.scale,
                   val_percent=args.val / 100)

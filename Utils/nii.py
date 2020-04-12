@@ -28,7 +28,11 @@ for f in os.listdir(path):
     print(file_path)
     mat = io.loadmat(os.path.join(path, f))
     scan = mat['scan']
-    cart = np.maximum(mat['CartTM'], mat['CartFM'])
+    cart_tm = mat['CartTM'] * 3
+    cart_fm = mat['CartFM'] * 2
+    tibia = mat['Tibia']
+
+    cart = np.maximum(np.maximum(cart_tm, cart_fm), tibia)
     
     nii_scan = nib.Nifti1Image(scan, affine=np.eye(4))
     nii_cart = nib.Nifti1Image(cart, affine=np.eye(4))

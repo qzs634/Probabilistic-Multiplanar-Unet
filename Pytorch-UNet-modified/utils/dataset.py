@@ -10,9 +10,10 @@ from PIL import Image
 
 
 class BasicDataset(Dataset):
-    def __init__(self, imgs_dir, masks_dir, scale=1):
+    def __init__(self, imgs_dir, masks_dir, n_classes, scale=1):
         self.imgs_dir = imgs_dir
         self.masks_dir = masks_dir
+        self.n_classes = n_classes
         self.scale = scale
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
 
@@ -24,7 +25,7 @@ class BasicDataset(Dataset):
         return len(self.ids)
 
     @classmethod
-    def preprocess(cls, pil_img, scale):
+    def preprocess(cls, pil_img, scale, n_classes=1, label=False):
         w, h = pil_img.size
         newW, newH = int(scale * w), int(scale * h)
         assert newW > 0 and newH > 0, 'Scale is too small'
@@ -37,10 +38,25 @@ class BasicDataset(Dataset):
 
         # HWC to CHW
         img_trans = img_nd.transpose((2, 0, 1))
-        if img_trans.max() > 1:
+        if img_trans.max() > 1 and not label:
             img_trans = img_trans / 255
+        else:
+            img_trans = one_hot_encode(img_trans, n_classes)
 
         return img_trans
+
+    @classmethod
+    def one_hot_encode(cls, img, n_classes):
+        c, h, w = img.shape
+        out_arr = np.zeros((n_classes, h, w))
+
+        for i in range(h):
+            for j in range(w):
+                class = img[0, i, j]
+                if class > 0:
+                    out_arr[class_index - 1, i, j] = 1.
+
+        return out_arr
 
     def __getitem__(self, i):
         idx = self.ids[i]
@@ -59,6 +75,6 @@ class BasicDataset(Dataset):
 
         img = self.preprocess(img, self.scale)
 
-        mask = self.preprocess(mask, self.scale)
+        mask = self.preprocess(mask, self.scale, n_classes=self.n_classes, label=True)
 
         return {'image': torch.from_numpy(img).float(), 'mask': torch.from_numpy(mask).float()}
