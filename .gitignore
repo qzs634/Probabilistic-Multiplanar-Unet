@@ -6,8 +6,9 @@ data_folder/*
 *.pyc
 data/*
 __pycache__/
-checkpoints/
-runs/
+**/checkpoints/
+**/runs/*
+runs/*
 *.pth
 *.jpg
 SUBMISSION*
