@@ -7,7 +7,7 @@ data_folder/*
 data/*
 __pycache__/
 checkpoints/
-runs/*
+runs/
 *.pth
 *.jpg
 SUBMISSION*
