@@ -72,7 +72,7 @@ class Slicer():
         batch = []
 
         i = 0
-        while (i < batch_size):
+        while (i <= batch_size):
             image_pair = self.sample_slice()
             # Filter applied. Only save images with foreground in labels
             if np.max(image_pair[1]) > 0:
@@ -81,38 +81,6 @@ class Slicer():
 
         self.batch_count += 1
         return batch
-
-    def make_all_pairs(self):
-        batch = []
-        n = self.image_loader.file_count
-        for x in range(n):
-            pair = self.image_loader.get_pair()
-            print("saving slices from scan ", x)
-
-            for i in range(pair.dims[0]):
-                image = pair.image[i, :, :]
-                label = pair.label[i, :, :]
-                if np.max(label) > 0:
-                    ret_pair = self.pad_dimensions(image, label)
-                    batch.append(ret_pair)
-
-            for j in range(pair.dims[1]):
-                image = pair.image[:, j, :]
-                label = pair.label[:, j, :]
-                if np.max(label) > 0:
-                    ret_pair = self.pad_dimensions(image, label)
-                    batch.append(ret_pair)
-
-            for k in range(pair.dims[2]):
-                image = pair.image[:, :, k]
-                label = pair.label[:, :, k]
-                if np.max(label) > 0:
-                    ret_pair = self.pad_dimensions(image, label)
-                    batch.append(ret_pair)
-
-        print("saving {} pairs to folder.".format(len(batch)))
-        self.save_batch_to_folder(batch)
-
 
     def save_batch_to_folder(self, batch):
         if not os.path.exists(self.out_path):
@@ -136,10 +104,9 @@ class Slicer():
             file_name = str(uuid.uuid4())
             image, label = batch[i]
             image = (image / np.max(image)) * 255
-            """
             if np.max(label) > 0:
                 label = (label / np.max(label)) * 255
-            """
+
             # image.astype(np.uint8).copy() hacky fix. Don't know what purpose the .copy() has
             png.from_array(image.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_image_path, file_name + ".png"))
             png.from_array(label.astype(np.uint8).copy(), 'L').save(os.path.join(self.out_label_path, file_name + ".png"))
