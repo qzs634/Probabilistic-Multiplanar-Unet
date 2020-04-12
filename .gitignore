@@ -1,17 +1,15 @@
 **/__pycache__/
 **/slicer_batches/
 **/.idea/
-**/__pycache__/
-<<<<<<< HEAD
 data_folder/*
+**/data
 *.pyc
-data/
+data/*
 __pycache__/
 checkpoints/
+runs/*
 *.pth
 *.jpg
 SUBMISSION*
 venv/
-=======
-data_folder/*
->>>>>>> cc257ef74ed2df7b5f5eeb44c9e0d152a8de1527
+
