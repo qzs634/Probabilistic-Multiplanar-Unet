@@ -45,13 +45,16 @@ class Slicer():
         
         return views
 
-    def sample_slice(self):
+    def sample_slice(self, random_pair=False, index=0):
         view = random.choice(self.views)
-        pair = self.image_loader.get_random_pair()
+        if random_pair:
+            pair = self.image_loader.get_random_pair()
+        else:
+            pair = self.image_loader.get_pair(index)
         dims = pair.dims
         
         # TODO generalize this instead of hardcoded slicing.
-        if False:#np.array_equal(view, self.views[0]):
+        if False: #np.array_equal(view, self.views[0]):
             slice_index = np.random.randint(0, dims[2])
             image_slice = pair.image[:, :, slice_index]
             label_slice = pair.label[:, :, slice_index]
@@ -73,14 +76,29 @@ class Slicer():
 
         i = 0
         while (i < batch_size):
-            image_pair = self.sample_slice()
+            image_pair = self.sample_slice(random_pair=False, index=i%24)
             # Filter applied. Only save images with foreground in labels
-            if np.max(image_pair[1]) > 0:
+            if np.max(image_pair[1]) > 1:
                 batch.append(image_pair)
                 i += 1
 
         self.batch_count += 1
         return batch
+
+    def make_all(self):
+        pairs = []
+        for i in range(self.image_loader.file_count):
+            pair = self.image_loader.get_pair(i)
+            dims = pair.dims
+            # Hardcoded side view
+            for slice in range(dims[0]):
+                image_slice = pair.image[slice, :, :]
+                label_slice = pair.label[slice, :, :]
+                if np.max(label_slice) > 1:
+                    pairs.append(self.pad_dimensions(image_slice, label_slice))
+
+        return pairs
+
 
     def save_batch_to_folder(self, batch):
         if not os.path.exists(self.out_path):
