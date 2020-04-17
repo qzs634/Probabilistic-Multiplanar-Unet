@@ -3,7 +3,7 @@
 **/__pycache__/
 **/data_folder/*
 *.pyc
-**/data/*
+**/data*/
 __pycache__/
 **/checkpoints/*
 **/runs/*

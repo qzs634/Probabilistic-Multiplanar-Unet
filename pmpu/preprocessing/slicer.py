@@ -95,7 +95,9 @@ class Slicer():
                 image_slice = pair.image[slice, :, :]
                 label_slice = pair.label[slice, :, :]
                 if np.max(label_slice) > 1:
-                    pairs.append(self.pad_dimensions(image_slice, label_slice))
+                    ret_image, ret_label = self.pad_dimensions(image_slice, label_slice)
+                    pairs.append(( ret_image, (ret_label > 1).astype(np.uint8) ))
+                    #pairs.append((np.flip(ret_image, axis=1), np.flip(ret_label, axis=1)))
 
         return pairs
 
