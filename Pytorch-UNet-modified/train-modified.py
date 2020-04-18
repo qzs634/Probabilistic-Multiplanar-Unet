@@ -16,12 +16,14 @@ from dice_loss import dice_coeff
 
 from torch.utils.tensorboard import SummaryWriter
 from utils.dataset import BasicDataset
+from utils.mri_dataset import MRI_Dataset, mri_collate
 from torch.utils.data import DataLoader, random_split
 
-dir_img = "data/imgs/"
-dir_mask = "data/masks/"
-dir_checkpoint = 'checkpoints/'
+import nonechucks as nc
 
+dir_img  = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\images" #"data/imgs/"
+dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\labels" #"data/masks/"
+dir_checkpoint = 'checkpoints/'
 
 def train_net(net,
               device,
@@ -35,7 +37,7 @@ def train_net(net,
               save_cp=False,
               img_scale=0.5):
 
-    dataset = BasicDataset(dir_img, dir_mask, net.n_classes, img_scale)
+    dataset = MRI_Dataset(dir_img, dir_mask, net.n_classes, img_scale)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
@@ -52,7 +54,7 @@ def train_net(net,
     sampler = None #torch.utils.data.sampler.WeightedRandomSampler(weights, len(train))
     """
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True) #collate_fn=mri_collate
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
     writer = SummaryWriter(comment=f'_EP_{epochs}_LR_{lr}_BS_{batch_size}_SCALE_{img_scale}')
@@ -102,8 +104,10 @@ def train_net(net,
                         masks_pred = net(imgs)
                         #print(f"Pred mask:\n    shape={masks_pred.shape}\n    unique={torch.unique(masks_pred)}")
 
-                        #loss = criterion(masks_pred, true_masks.squeeze(1))
-                        loss = criterion(masks_pred, true_masks)
+                        if net.n_classes > 1:
+                            loss = criterion(masks_pred, true_masks.squeeze(1))
+                        else:
+                            loss = criterion(masks_pred, true_masks)
 
                         writer.add_scalar('Loss/train', loss.item(), global_step)
                         pbar.set_postfix(**{'loss (batch)': loss.item()})
@@ -136,15 +140,16 @@ def train_net(net,
                     pbar.set_description(f'Epoch {epoch + 1}/{epochs} (validation round)')
 
                     optimizer.zero_grad()
+                    """
                     for tag, value in net.named_parameters():
                         tag = tag.replace('.', '/')
                         writer.add_histogram('weights/' + tag, value.data.cpu().numpy(), global_step)
                         if not value.grad == None:
                             writer.add_histogram('grads/' + tag, value.grad.data.cpu().numpy(), global_step)
-
+                    """
                     net.eval()
 
-                    n_val = len(val_loader)  # the number of batch
+                    val_count = len(val_loader)  # the number of batches in validation set
                     dice_sum = 0
                     dice_sums = [0, 0, 0]
                     loss_sum = 0
@@ -156,27 +161,23 @@ def train_net(net,
                         imgs = imgs.to(device=device, dtype=torch.float32)
                         true_masks = true_masks.to(device=device, dtype=mask_type)
 
-                        print(f"True mask:\n   shape={true_masks.shape}\n    unique={torch.unique(true_masks)}")
-
                         with torch.no_grad():
                             masks_pred = net(imgs)
-
-                        print(f"Pred mask:\n    shape={masks_pred.shape}\n    unique={torch.unique(masks_pred)}")
-
 
                         # Calculate dice score for each
                         if net.n_classes == 1:
                             dice_sum += dice_coeff((masks_pred > 0.5).float(), true_masks).item()
                         else:
                             probs = F.softmax(masks_pred, dim=1).data
-                            max_idx = torch.argmax(probs, 0, keepdim=True)
+                            max_idx = torch.argmax(probs, 1, keepdim=True)
                             one_hot = torch.FloatTensor(probs.shape).to(device=device)
                             one_hot.zero_()
-                            one_hot.scatter_(0, max_idx, 1)
+                            one_hot.scatter_(1, max_idx, 1)
 
-                            dice_sums[0] += dice_coeff(one_hot[:, 1, :, :], (true_masks == 1).float()).item() #[bg, c1, c2, c3] -> bg/c1 (0/1)
-                            dice_sums[1] += dice_coeff(one_hot[:, 2, :, :], (true_masks == 2).float()).item()
-                            dice_sums[2] += dice_coeff(one_hot[:, 3, :, :], (true_masks == 3).float()).item()
+                            dice_sums[0] += dice_coeff(one_hot[:, 1, :, :], (true_masks == 1).float().squeeze(1)).item()
+                            dice_sums[1] += dice_coeff(one_hot[:, 2, :, :], (true_masks == 2).float().squeeze(1)).item()
+                            print(dice_coeff(one_hot[:, 3, :, :], (true_masks == 3).float().squeeze(1)).item())
+                            dice_sums[2] += dice_coeff(one_hot[:, 3, :, :], (true_masks == 3).float().squeeze(1)).item()
 
                         # Calculate validation loss
                         if net.n_classes > 1:
@@ -186,13 +187,14 @@ def train_net(net,
                         loss_sum += loss.item()
 
                         # Calculate accuracy, sensitivity and specificity scalars
+
                         """
                         probs = F.softmax(masks_pred, dim=1).data
                         max_idx = torch.argmax(probs, 0, keepdim=True)
-                        one_hot = torch.FloatTensor(probs.shape).to(device=device)
+                        one_hot = torch.FloatTensor(probs.shape).to(device=device, dtype=mask_type)
                         one_hot.zero_()
-                        one_hot.scatter_(0, max_idx, 1)
-                        """
+                        one_hot.scatter_(1, max_idx, 1)
+
 
                         confusion_vector = one_hot / F.one_hot(true_masks.squeeze(1), num_classes=4).permute(0, 3, 1, 2) if net.n_classes > 1 else masks_pred / true_masks
                         # print(torch.unique(confusion_vector))
@@ -208,7 +210,7 @@ def train_net(net,
                             sensitivity_sum = true_positives / (true_positives + false_negatives)
                         if (true_negatives + false_positives) > 0:
                             specificity_sum = true_negatives / (true_negatives + false_positives)
-
+                        """
 
                         # Write a single image during validation
                         if (global_step % n_val) == 0:
@@ -234,22 +236,22 @@ def train_net(net,
                         pbar.update()
 
                     # write metrics
-                    avg_loss = loss_sum / n_val
+                    avg_loss = loss_sum / val_count
                     writer.add_scalar('Loss/validation', avg_loss, global_step)
                     writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
 
-                    writer.add_scalar('metrics/accuracy', accuracy_sum / n_val, global_step)
-                    writer.add_scalar('metrics/sensitivity', sensitivity_sum / n_val, global_step)
-                    writer.add_scalar('metrics/specificity', specificity_sum / n_val, global_step)
+                    writer.add_scalar('metrics/accuracy', accuracy_sum / val_count, global_step)
+                    writer.add_scalar('metrics/sensitivity', sensitivity_sum / val_count, global_step)
+                    writer.add_scalar('metrics/specificity', specificity_sum / val_count, global_step)
 
                     if net.n_classes > 1:
-                        writer.add_scalar('dice/tibia', dice_sums[0] / n_val, global_step)
-                        writer.add_scalar('dice/femur_cart', dice_sums[1] / n_val, global_step)
-                        writer.add_scalar('dice/tibia_cart', dice_sums[2] / n_val, global_step)
+                        writer.add_scalar('dice/tibia', dice_sums[0] / val_count, global_step)
+                        writer.add_scalar('dice/femur_cart', dice_sums[1] / val_count, global_step)
+                        writer.add_scalar('dice/tibia_cart', dice_sums[2] / val_count, global_step)
 
                     #Adjust learning rate based on metric
                     if net.n_classes == 1:
-                        val_score = dice_sum / n_val
+                        val_score = dice_sum / val_count
                         logging.info('Validation Dice Coeff: {}'.format(val_score))
                         writer.add_scalar('metrics/dice', val_score, global_step)
                     else:
@@ -308,7 +310,7 @@ if __name__ == '__main__':
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    n_classes = 1
+    n_classes = 4
     net = UNet(n_channels=1, n_classes=n_classes) #(background, tibia, femoral cartilage, tibial cartilage)
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
@@ -325,7 +327,7 @@ if __name__ == '__main__':
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
-    lrs = [1e-3]
+    lrs = [5e-4]
     try:
         for lr in lrs:
             net = UNet(n_channels=1, n_classes=n_classes)
