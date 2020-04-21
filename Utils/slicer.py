@@ -55,25 +55,24 @@ def crop3d(mat):
                 
             
 
-filenames = [f for f in os.listdir('ScanManTrim')]
-f = [scipy.io.loadmat('ScanManTrim/'+f) for f in filenames]
+#filenames = [f for f in os.listdir('ScanManTrim')]
+#f = [scipy.io.loadmat('ScanManTrim/'+f) for f in filenames]
 if len(sys.argv) > 1:
         file_index = int(sys.argv[1])
 else:
         file_index = 0
 
-nii_im = nib.load('toy/train/images/toy_data_0.nii')
-nii_lab = nib.load('toy/train/labels/toy_data_0.nii')
-#nii_lab = nii_lab.get_fdata()
-print(np.max(nii_im.get_fdata()))
-mat = f[file_index]
-crop3d(mat)
-scan = mat['scan']
-scan_norm = (scan / np.max(scan)) * 255
-cart_tm = mat['CartTM'] * 255
-cart_fm = mat['CartFM'] * 255
-tibia = mat['Tibia'] * 255
-k_img = np.stack([cart_tm, cart_fm, tibia],3)
+nii_im = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\pred1image22.nii').get_fdata()
+nii_lab = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\labels\image22.nii').get_fdata()
+
+#mat = f[file_index]
+#crop3d(mat)
+#scan = mat['scan']
+#scan_norm = (scan / np.max(scan)) * 255
+#cart_tm = mat['CartTM'] * 255
+#cart_fm = mat['CartFM'] * 255
+#tibia = mat['Tibia'] * 255
+#k_img = np.stack([cart_tm, cart_fm, tibia],3)
 
         
 
@@ -82,13 +81,13 @@ def multi_slice_viewer(X,Y):
     global index
     remove_keymap_conflicts({'j', 'k'})
     fig, ax = plt.subplots(1,2)
-    ax[0].set_title(filenames[file_index] + "\n" + str(bool(mat['ishealthy'])))
+    ax[0].set_title("predicted")
     ax[0].set_ylabel("slice " + str(index))
-    ax[1].set_title("blue:tibia, red:tibial cartiage, green:femoral cartilage")
+    ax[1].set_title("ground truth")
     ax[0].volume = X
     ax[1].volume = Y
     ax[0].im = ax[0].imshow(X[index,:,:], cmap='Greys_r')
-    ax[1].im = ax[1].imshow(Y[index,:,:])
+    ax[1].im = ax[1].imshow(Y[index,:,:], cmap='Greys_r')
     ax[1].im.set_clim(0,1)
     fig.canvas.mpl_connect('key_press_event', process_key)
     plt.show()
@@ -123,8 +122,6 @@ def next_slice(ax):
 # side view - sagital plane (0, 1, 2)
 # front view - coronal plane (1, 0, 2)
 # top-down view - axial plane (2, 1, 0)
-tm, fm, crop_scan = crop3d(mat)
-cart = np.maximum(tm, fm)
-multi_slice_viewer(crop_scan, cart)
-#multi_slice_viewer(np.transpose(scan, (0, 1, 2)), np.transpose(k_img, (0, 1, 2, 3)))
-
+#tm, fm, crop_scan = crop3d(mat)
+#cart = np.maximum(tm, fm)
+multi_slice_viewer(nii_im, nii_lab)

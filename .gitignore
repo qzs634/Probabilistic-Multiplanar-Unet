@@ -1,4 +1,5 @@
 **/__pycache__/
+**/*.nii
 **/.idea/
 **/__pycache__/
 **/data_folder/*

@@ -10,7 +10,6 @@ import torch.nn.functional as F
 from torch import optim
 from tqdm import tqdm
 
-from eval import eval_net
 from unet import UNet
 from dice_loss import dice_coeff
 
@@ -34,10 +33,9 @@ def train_net(net,
               lrp=2,
               om=0.9,
               val_percent=0.1,
-              save_cp=False,
-              img_scale=0.5):
+              save_cp=False):
 
-    dataset = MRI_Dataset(dir_img, dir_mask, net.n_classes, img_scale)
+    dataset = MRI_Dataset(dir_img, dir_mask, net.n_classes)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
@@ -70,7 +68,6 @@ def train_net(net,
         Validation size: {n_val}
         Checkpoints:     {save_cp}
         Device:          {device.type}
-        Images scaling:  {img_scale}
     ''')
 
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=om)
@@ -176,7 +173,6 @@ def train_net(net,
 
                             dice_sums[0] += dice_coeff(one_hot[:, 1, :, :], (true_masks == 1).float().squeeze(1)).item()
                             dice_sums[1] += dice_coeff(one_hot[:, 2, :, :], (true_masks == 2).float().squeeze(1)).item()
-                            print(dice_coeff(one_hot[:, 3, :, :], (true_masks == 3).float().squeeze(1)).item())
                             dice_sums[2] += dice_coeff(one_hot[:, 3, :, :], (true_masks == 3).float().squeeze(1)).item()
 
                         # Calculate validation loss
@@ -213,7 +209,7 @@ def train_net(net,
                         """
 
                         # Write a single image during validation
-                        if (global_step % n_val) == 0:
+                        if (global_step % val_count) == 0:
                             writer.add_images('images', imgs, global_step)
                             if net.n_classes == 1:
                                 writer.add_images('masks/true', true_masks, global_step)
@@ -270,6 +266,9 @@ def train_net(net,
             logging.info(f'Checkpoint {epoch + 1} saved !')
 
     # End of training
+    torch.save(net.state_dict(),
+               dir_checkpoint + f'model.pth')
+    logging.info(f'Saved model ')
     writer.close()
 
 
