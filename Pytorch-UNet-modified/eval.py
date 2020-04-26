@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 from unet.unet_model import UNet
+from dice_loss import dice_coeff
 from tqdm import tqdm
 import torch
 from torch.nn.functional import softmax
@@ -35,17 +36,26 @@ def get_args():
 
     return parser.parse_args()
 
-def one_hot_to_index(tensor):
-    ret = torch.argmax(tensor, axis=1)
-    return ret
+def dice(pred, truth, class_index):
+    max_idx = torch.argmax(pred, 1, keepdim=True)
+    one_hot = torch.FloatTensor(pred.shape).to(device=device)
+    one_hot.zero_()
+    one_hot.scatter_(1, max_idx, 1)
+
+    dice = dice_coeff(one_hot[:, class_index, :, :], (truth == class_index).float().squeeze(1)).item()
+    return dice
+
+def volume_to_nii(volume, title):
+    argmax = torch.argmax(volume, axis=1)
+    nii = nib.Nifti1Image(argmax.cpu().numpy().astype(np.float32), affine=np.eye(4))
+    nib.save(nii, title)
 
 def slices_to_volume(slices):
-    volume = one_hot_to_index(slices[0])
+    volume = slices[0]
     for slice in slices[1:]:
-        volume = torch.cat([volume, one_hot_to_index(slice)])
+        volume = torch.cat([volume,slice])
 
     return volume
-
 
 if __name__ == "__main__":
     printstr = """
@@ -91,12 +101,15 @@ if __name__ == "__main__":
     n = 0
     N = len(dataset)
     predicted = []
+    truths = []
     with tqdm(total=N, desc=f'Predictions ', unit='img') as pbar:
         for data in loader:
             img = data['image']
             img = img.to(device=device, dtype=torch.float32)
             true_mask = data['mask']
             true_mask = true_mask.to(device=device, dtype=mask_type)
+
+            truths.append(true_mask)
 
             with torch.no_grad():
                 pred_mask = net(img)
@@ -117,8 +130,6 @@ if __name__ == "__main__":
     predicted = np.array(predicted)
     print(predicted.shape)
 
-    # list of volume triples (view 1, view 2, view 3)
-    volume_segmentations = []
 
 
     img_count = 0
@@ -130,28 +141,32 @@ if __name__ == "__main__":
             """
             i = img_count
 
-            print(f"Volume 1: {i} : {i + dataset.image_dims[0]}")
+            true_mask = torch.cat(truths[i:i + dataset.image_dims[0]])
+            print(true_mask.shape)
+
+            #print(f"Volume 1: {i} : {i + dataset.image_dims[0]}")
             volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]])
-            print("volume shape: ", volume1.shape)
+            volume_to_nii(volume1, "pred1" + id)
+
             i += dataset.image_dims[0]
-            # Save volume1 as .nii
-            nii1 = nib.Nifti1Image(volume1.cpu().numpy().astype(np.float32), affine=np.eye(4))
-            nib.save(nii1, "pred1" + id)
             pbar.update(1)
 
-            print(f"Volume 2: {i} : {i + dataset.image_dims[1]}")
-            volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]])
+            #print(f"Volume 2: {i} : {i + dataset.image_dims[1]}")
+            volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
+            volume_to_nii(volume2, "pred2" + id)
+
             i += dataset.image_dims[1]
-            nib.save(nib.Nifti1Image(volume2.cpu().numpy(), affine=np.eye(4)), "pred2" + id)
             pbar.update(1)
 
-            print(f"Volume 3: {i} : {i + dataset.image_dims[2]}")
-            volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]])
+            #print(f"Volume 3: {i} : {i + dataset.image_dims[2]}")
+            volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]]).permute(2, 1, 3, 0)
             i += dataset.image_dims[2]
-            nib.save(nib.Nifti1Image(volume3.cpu().numpy(), affine=np.eye(4)), "pred3" + id)
+            volume_to_nii(volume3, "pred3" + id)
             pbar.update(1)
 
-            volume_segmentations.append((volume1, volume2, volume3))
+            avg_volume = (volume1 + volume2 + volume3) / 3.0 #torch.cat([volume1, volume2, volume3], dim=1) # [170, 4, 170, 170]
+            print("dice scores:\n  tibia: {}\n  femoral cartilage: {}\n  tibial cartilage: {}".format(dice(avg_volume, true_mask, 1), dice(avg_volume, true_mask, 2), dice(avg_volume, true_mask, 3)))
+            volume_to_nii(avg_volume, "avgpred" + id)
 
             img_count += i
 
@@ -159,5 +174,12 @@ if __name__ == "__main__":
     Compute Dice volume overlap on the three different views.
     Combine the three view segmentations to a single volume, that is the average of the three.
     Save predicted volume as .nii file
+    
+    Problemer: 
+    - Tjek at volumes indeholder de rigtige værdier (ikke er tomme)
+    - Hvordan laver vi (vægtet?) gennemsnit med class values og ikke one hot?
+    - Hvordan håndterer vi (un)padding. Ground truth labels er paddede, det er predictions ikke.
+    - Kun den mediale del af knæet har ground truth brusk. Hvis prediction mask gætter brusk i den anden halvdel, vil det tælle negativt i dice score, selvom det kan være rigtigt.
+    - 
     """
 

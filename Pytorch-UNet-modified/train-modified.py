@@ -159,7 +159,7 @@ def train_net(net,
                         true_masks = true_masks.to(device=device, dtype=mask_type)
 
                         with torch.no_grad():
-                            masks_pred = net(imgs)
+                            masks_pred = net(imgs) # [bg, c1, c2, c3]
 
                         # Calculate dice score for each
                         if net.n_classes == 1:
