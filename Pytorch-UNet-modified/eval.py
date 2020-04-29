@@ -152,6 +152,7 @@ if __name__ == "__main__":
             pbar.update(1)
 
             #print(f"Volume 2: {i} : {i + dataset.image_dims[1]}")
+            # permute rotates the volume image to match the ground truth label
             volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
             volume_to_nii(volume2, "pred2" + id)
 
@@ -164,7 +165,7 @@ if __name__ == "__main__":
             volume_to_nii(volume3, "pred3" + id)
             pbar.update(1)
 
-            avg_volume = (volume1 + volume2 + volume3) / 3.0 #torch.cat([volume1, volume2, volume3], dim=1) # [170, 4, 170, 170]
+            avg_volume = (volume1 + volume2 + volume3) / 3.0
             print("dice scores:\n  tibia: {}\n  femoral cartilage: {}\n  tibial cartilage: {}".format(dice(avg_volume, true_mask, 1), dice(avg_volume, true_mask, 2), dice(avg_volume, true_mask, 3)))
             volume_to_nii(avg_volume, "avgpred" + id)
 

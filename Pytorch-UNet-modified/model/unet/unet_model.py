@@ -6,11 +6,12 @@ from .unet_parts import *
 
 
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=True):
+    def __init__(self, n_channels, n_classes, bilinear=True, apply_last_layer=True):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
+        self.apply_last_layer = apply_last_layer
 
         self.inc = DoubleConv(n_channels, 64)
         self.down1 = Down(64, 128)
@@ -38,4 +39,7 @@ class UNet(nn.Module):
         if self.n_classes == 1:
             logits = torch.sigmoid(logits)
 
-        return logits
+        if self.apply_last_layer:
+            return logits
+        else:
+            return x

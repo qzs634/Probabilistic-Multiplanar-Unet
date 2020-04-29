@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import optim
 from tqdm import tqdm
 
-from unet import UNet
+from model import UNet
 from dice_loss import dice_coeff
 
 from torch.utils.tensorboard import SummaryWriter
@@ -55,7 +55,7 @@ def train_net(net,
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True) #collate_fn=mri_collate
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
-    writer = SummaryWriter(comment=f'_EP_{epochs}_LR_{lr}_BS_{batch_size}_SCALE_{img_scale}')
+    writer = SummaryWriter(comment=f'_EP_{epochs}_LR_{lr}_BS_{batch_size}')
     global_step = 0
     global_step_size = 1
 
@@ -339,7 +339,6 @@ if __name__ == '__main__':
                       lrp=args.lrp,
                       om=args.om,
                       device=device,
-                      img_scale=args.scale,
                       val_percent=args.val / 100)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')

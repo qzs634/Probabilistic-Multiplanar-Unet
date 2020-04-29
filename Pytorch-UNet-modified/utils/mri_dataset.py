@@ -7,7 +7,6 @@ from torch.utils.data import Dataset, SubsetRandomSampler
 from torch.utils.data.dataloader import default_collate
 import nibabel as nib
 import logging
-from PIL import Image
 
 def mri_collate(batch):
     if None in batch:
@@ -38,7 +37,7 @@ class MRI_Dataset(Dataset):
             for view in range(len(self.views)):
                 dim_shape = mask.shape[view]
                 for slice in range(dim_shape):
-                    mask_slice = self.sample_slice(mask, view, slice)
+                    mask_slice = self.sample_slice(mask, self.views[view], slice)
 
                     if filter:
                         if np.max(mask_slice) > 1:
@@ -52,7 +51,7 @@ class MRI_Dataset(Dataset):
 
 
     def __len__(self):
-        return self.len
+        return self.len // 4
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
@@ -63,14 +62,16 @@ class MRI_Dataset(Dataset):
         return views
 
     def sample_slice(self, image, view, slice_index):
-
         # TODO generalize this instead of hardcoded slicing.
-        if np.array_equal(view, self.views[0]):
+        if np.array_equal(view, self.views[0]): # [1, 0, 0] = [[1, 0, 0], [0, 1, 0], [0, 0, 0]]
             image_slice = image[slice_index, :, :]
         elif np.array_equal(view, self.views[1]):
             image_slice = image[:, slice_index, :]
-        else:
+        elif np.array_equal(view, self.views[2]):
             image_slice = image[:, :, slice_index]
+        else:
+            print("No valid view")
+            exit()
 
         return image_slice
 
