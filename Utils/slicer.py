@@ -62,7 +62,7 @@ if len(sys.argv) > 1:
 else:
         file_index = 0
 
-nii_im = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\pred1image22.nii').get_fdata()
+nii_im =  nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\images\image22.nii').get_fdata()
 nii_lab = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\labels\image22.nii').get_fdata()
 
 #mat = f[file_index]

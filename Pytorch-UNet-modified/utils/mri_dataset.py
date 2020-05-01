@@ -51,7 +51,7 @@ class MRI_Dataset(Dataset):
 
 
     def __len__(self):
-        return self.len // 4
+        return self.len
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
