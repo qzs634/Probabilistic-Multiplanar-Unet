@@ -39,7 +39,7 @@ def train_net(trainer,
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True) #collate_fn=mri_collate
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
     writer = SummaryWriter(comment=f'_EP_{epochs}_LR_{lr}_BS_{batch_size}')
@@ -156,7 +156,7 @@ def train_net(trainer,
 
     # End of training
     torch.save(trainer.net.state_dict(),
-               dir_checkpoint + f'model.pth')
+               dir_checkpoint + 'model.pt')
     logging.info(f'Saved model ')
     writer.close()
 
@@ -192,7 +192,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     args = get_args()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Using device {device}')
+    logging.info(f'Using device {device} with properties= {torch.cuda.get_device_properties(device)}')
 
     # Change here to adapt to your data
     # n_channels=3 for RGB images
@@ -205,21 +205,18 @@ if __name__ == '__main__':
     if args.net == "unet":
         trainer = UNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load)
     elif args.net == "probunet":
-        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load)
+        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load, latent_dim=2)
     else:
         print("Error! {} is not a valid model".format(args.net))
 
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
-    lrs = [5e-4]
     try:
-        for lr in lrs:
-
             train_net(trainer,
                       epochs=args.epochs,
                       batch_size=args.batchsize,
-                      lr=lr,
+                      lr=args.lr,
                       lrf=args.lrf,
                       lrp=args.lrp,
                       om=args.om,

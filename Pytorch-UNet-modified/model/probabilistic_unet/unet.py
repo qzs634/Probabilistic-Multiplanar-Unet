@@ -15,7 +15,7 @@ class Unet(nn.Module):
         super(Unet, self).__init__()
         self.input_channels = input_channels
         self.num_classes = num_classes
-        self.num_filters = num_filters
+        self.num_filters = num_filters # [64,128,256,512,1024]
         self.padding = padding
         self.activation_maps = []
         self.apply_last_layer = apply_last_layer

@@ -1,7 +1,7 @@
 #This code is based on: https://github.com/SimonKohl/probabilistic_unet
 
 from .unet_blocks import *
-from .unet import Unet
+from model.unet import UNet
 from .utils import init_weights,init_weights_orthogonal_normal, l2_regularisation
 import torch.nn.functional as F
 from torch.distributions import Normal, Independent, kl
@@ -200,10 +200,14 @@ class ProbabilisticUnet(nn.Module):
         self.beta = beta
         self.z_prior_sample = 0
 
-        self.unet = Unet(self.n_channels, self.n_classes, self.num_filters, self.initializers, apply_last_layer=False, padding=True).to(device)
+        self.unet = UNet(n_channels=self.n_channels, n_classes=self.n_classes, num_filters=self.num_filters, apply_last_layer=False).to(device)
         self.prior = AxisAlignedConvGaussian(self.n_channels, self.num_filters, self.no_convs_per_block, self.latent_dim,  self.initializers,).to(device)
         self.posterior = AxisAlignedConvGaussian(self.n_channels, self.num_filters, self.no_convs_per_block, self.latent_dim, self.initializers, posterior=True).to(device)
         self.fcomb = Fcomb(self.num_filters, self.latent_dim, self.n_channels, self.n_classes, self.no_convs_fcomb, {'w':'orthogonal', 'b':'normal'}, use_tile=True).to(device)
+
+        self.posterior_latent_space = None
+        self.prior_latent_space = None
+        self.unet_features = None
 
     def forward(self, patch, segm, training=True):
         """
@@ -213,7 +217,7 @@ class ProbabilisticUnet(nn.Module):
         if training:
             self.posterior_latent_space = self.posterior.forward(patch, segm)
         self.prior_latent_space = self.prior.forward(patch)
-        self.unet_features = self.unet.forward(patch,False)
+        self.unet_features = self.unet.forward(patch)
 
     def sample(self, testing=False):
         """
@@ -229,6 +233,14 @@ class ProbabilisticUnet(nn.Module):
             z_prior = self.prior_latent_space.sample()
             self.z_prior_sample = z_prior
         return self.fcomb.forward(self.unet_features,z_prior)
+
+    def sample_at(self, z):
+        """
+        get probability at z location
+        prob = torch.exp(self.prior_latent_space.log_prob(z))
+        """
+        return self.fcomb.forward(self.unet_features, z.to(device).unsqueeze(0))
+
 
 
     def reconstruct(self, use_posterior_mean=False, calculate_posterior=False, z_posterior=None):
@@ -251,7 +263,7 @@ class ProbabilisticUnet(nn.Module):
         calculate_posterior: if we use samapling to approximate KL we can sample here or supply a sample
         """
         if analytic:
-            #Neeed to add this to torch source code, see: https://github.com/pytorch/pytorch/issues/13545
+            #Need to add this to torch source code, see: https://github.com/pytorch/pytorch/issues/13545
             kl_div = kl.kl_divergence(self.posterior_latent_space, self.prior_latent_space)
         else:
             if calculate_posterior:
@@ -282,5 +294,4 @@ class ProbabilisticUnet(nn.Module):
         reconstruction_loss = criterion(input=self.reconstruction, target=segm)
         self.reconstruction_loss = torch.sum(reconstruction_loss)
         self.mean_reconstruction_loss = torch.mean(reconstruction_loss)
-
         return -(self.reconstruction_loss + self.beta * self.kl)

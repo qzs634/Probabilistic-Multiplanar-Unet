@@ -9,24 +9,24 @@ from dice_loss import dice_coeff
 
 class ProbUNetTrainer(Trainer):
 
-    def __init__(self, device, n_channels=1, n_classes=1, load_model=None):
+    def __init__(self, device, n_channels=1, n_classes=1, load_model=None, latent_dim=6):
         self.device = device
         self.mask_type = torch.float32
-        net = ProbabilisticUnet(input_channels=n_channels, num_classes=n_classes, num_filters=[64,128,256,512], latent_dim=6, no_convs_fcomb=4, beta=10.0)
+        self.net = ProbabilisticUnet(input_channels=n_channels, num_classes=n_classes, num_filters=[64,128,256,512,1024], latent_dim=latent_dim, no_convs_fcomb=4, beta=10.0)
 
         if load_model is not None:
+
             self.net.load_state_dict(
-                torch.load(load_model, map_location=device)
+                torch.load(load_model, map_location=device), strict=False
             )
 
-        self.net = net.to(device)
+        self.net = self.net.to(device)
         self.criterion = nn.BCELoss() if self.net.n_classes == 1 else nn.CrossEntropyLoss()
 
-    def predict(self, imgs, true_masks):
+    def predict(self, imgs, true_masks, z=None):
         train = torch.is_grad_enabled()
-        #print(f"image: shape={imgs.shape}, dtype={imgs.dtype}\nmasks: shape={true_masks.shape}, dtype={true_masks.dtype}")
         self.net.forward(imgs, true_masks, training=train)
-        masks_pred = self.net.sample(testing=not train)
+        masks_pred = self.net.sample(testing=not train) if z is None else self.net.sample_at(z)
 
         return masks_pred
 
