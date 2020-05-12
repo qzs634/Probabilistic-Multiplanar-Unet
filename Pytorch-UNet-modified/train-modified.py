@@ -184,6 +184,8 @@ def get_args():
                         help='Percent of the data that is used as validation (0-100)')
     parser.add_argument('-m', '--model', dest='net', type=str, default="unet",
                         help='what model to use: unet or probunet')
+    parser.add_argument('-d', '--dir', dest='dir', type=str, default=None,
+                        help='image and label superdirs.')
 
     return parser.parse_args()
 
@@ -208,6 +210,10 @@ if __name__ == '__main__':
         trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load, latent_dim=2)
     else:
         print("Error! {} is not a valid model".format(args.net))
+
+    if args.dir is not None:
+        dir_img = os.path.join(args.dir, "images")
+        dir_mask = os.path.join(args.dir, "labels")
 
     # faster convolutions, but more memory
     # cudnn.benchmark = True

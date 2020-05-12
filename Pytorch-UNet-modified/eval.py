@@ -166,7 +166,7 @@ if __name__ == "__main__":
             pbar.update(1)
 
             avg_volume = (volume1 + volume2 + volume3) / 3.0
-            print("dice scores:\n  tibia: {}\n  femoral cartilage: {}\n  tibial cartilage: {}".format(dice(avg_volume, true_mask, 1), dice(avg_volume, true_mask, 2), dice(avg_volume, true_mask, 3)))
+            print(f"dice scores:\n  tibia: {dice(avg_volume, true_mask, 1)}\n  femoral cartilage: {dice(avg_volume, true_mask, 2)}\n  tibial cartilage: {dice(avg_volume, true_mask, 3)}")
             volume_to_nii(avg_volume, "avgpred" + id)
 
             img_count += i
