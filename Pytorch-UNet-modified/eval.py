@@ -23,10 +23,6 @@ Eval:
     - compare all view's segmentation volumes against ground truth
 - combine all segmentations to one average segmentation volume
 """
-
-def predict(net, scan, mask=None):
-    pass
-
 def get_args():
     parser = argparse.ArgumentParser(description='Predict using a trained UNet',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -128,9 +124,8 @@ if __name__ == "__main__":
             pbar.update(1)
 
     predicted = np.array(predicted)
-    print(predicted.shape)
 
-
+    dice_scores = []
 
     img_count = 0
     with tqdm(total=np.ceil(len(predicted) / dataset.image_dims[0]), desc=f'Segmentation volumes', unit='segmentations') as pbar:
@@ -142,16 +137,13 @@ if __name__ == "__main__":
             i = img_count
 
             true_mask = torch.cat(truths[i:i + dataset.image_dims[0]])
-            print(true_mask.shape)
 
-            #print(f"Volume 1: {i} : {i + dataset.image_dims[0]}")
             volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]])
             volume_to_nii(volume1, "pred1" + id)
 
             i += dataset.image_dims[0]
             pbar.update(1)
 
-            #print(f"Volume 2: {i} : {i + dataset.image_dims[1]}")
             # permute rotates the volume image to match the ground truth label
             volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
             volume_to_nii(volume2, "pred2" + id)
@@ -159,14 +151,13 @@ if __name__ == "__main__":
             i += dataset.image_dims[1]
             pbar.update(1)
 
-            #print(f"Volume 3: {i} : {i + dataset.image_dims[2]}")
             volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]]).permute(2, 1, 3, 0)
             i += dataset.image_dims[2]
             volume_to_nii(volume3, "pred3" + id)
             pbar.update(1)
 
             avg_volume = (volume1 + volume2 + volume3) / 3.0
-            print(f"dice scores:\n  tibia: {dice(avg_volume, true_mask, 1)}\n  femoral cartilage: {dice(avg_volume, true_mask, 2)}\n  tibial cartilage: {dice(avg_volume, true_mask, 3)}")
+            logging.info(f"dice scores:\n  tibia: {dice(avg_volume, true_mask, 1)}\n  femoral cartilage: {dice(avg_volume, true_mask, 2)}\n  tibial cartilage: {dice(avg_volume, true_mask, 3)}")
             volume_to_nii(avg_volume, "avgpred" + id)
 
             img_count += i

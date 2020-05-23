@@ -8,8 +8,10 @@
 __pycache__/
 **/checkpoints/*
 **/runs/*
+**/runs(old)/*
 *.pth
 *.jpg
+*.png
 SUBMISSION*
 venv/
 

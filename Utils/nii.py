@@ -56,18 +56,39 @@ if __name__ == "__main__":
     print(f"Saving {n} scans.")
     for f in os.listdir(path):
         file_path = os.path.join(path, f)
-        print(file_path)
         mat = hdf5.loadmat(os.path.join(path, f))
-        #print(mat.keys())
+        #print(mat)
         scan = mat['scan']
-        cart_tm = mat['CartTM'] * 3
-        cart_fm = mat['CartFM'] * 2
-        if 'Tibia' in mat.keys():
-            tibia = mat['Tibia']
-        else:
-            tibia = np.zeros_like(scan)
+        """
+        # 'FemoralCartilage', 'LateralFemoralCartilage', 'LateralMeniscus', 'LateralTibialCartilage', 'MedialFemoralCartilage', 'MedialMeniscus', 'MedialTibialCartilage', 'PatellarCartilage', 'Tibia'
+        fcl = mat['LateralFemoralCartilage'].astype(int) * 8
+        fcm = mat['MedialFemoralCartilage'].astype(int) * 7
+        mm = mat['MedialMeniscus'].astype(int) * 6
+        lm = mat['LateralMeniscus'].astype(int) * 5
+        tcl = mat['LateralTibialCartilage'].astype(int) * 4
+        tcm = mat['MedialTibialCartilage'].astype(int) * 3
+        pc = mat['PatellarCartilage'].astype(int) * 2
+        tib = mat['Tibia'].astype(int)
 
-        cart = np.maximum(np.maximum(cart_tm, cart_fm), tibia)
+        cart = np.maximum(fcl, fcm)
+        cart = np.maximum(cart, mm)
+        cart = np.maximum(cart, lm)
+        cart = np.maximum(cart, tcl)
+        cart = np.maximum(cart, tcm)
+        cart = np.maximum(cart, pc)
+        cart = np.maximum(cart, tib)
+        """
+
+        # Binary segmentations
+        cart_tm = mat['CartTM'].astype(int)
+        cart_fm = mat['CartFM'].astype(int) * 2
+
+        # Multiclass segmentations
+        # cart_tm = mat['CartTM'] * 2
+        # cart_fm = mat['CartFM'] * 1
+
+        cart = np.maximum(cart_tm, cart_fm)
+
 
         nii_scan = nib.Nifti1Image(scan, affine=np.eye(4))
         nii_cart = nib.Nifti1Image(cart, affine=np.eye(4))

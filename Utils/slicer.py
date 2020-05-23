@@ -62,8 +62,8 @@ if len(sys.argv) > 1:
 else:
         file_index = 0
 
-nii_im =  nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\images\image22.nii').get_fdata()
-nii_lab = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\labels\image22.nii').get_fdata()
+nii_im =  nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(Binary)\train\images\image15.nii').get_fdata()
+nii_lab = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(Binary)\train\labels\image15.nii').get_fdata()
 
 #mat = f[file_index]
 #crop3d(mat)
@@ -74,7 +74,7 @@ nii_lab = nib.load(r'C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\t
 #tibia = mat['Tibia'] * 255
 #k_img = np.stack([cart_tm, cart_fm, tibia],3)
 
-        
+
 
 index = 0
 def multi_slice_viewer(X,Y):
@@ -124,4 +124,13 @@ def next_slice(ax):
 # top-down view - axial plane (2, 1, 0)
 #tm, fm, crop_scan = crop3d(mat)
 #cart = np.maximum(tm, fm)
-multi_slice_viewer(nii_im, nii_lab)
+#multi_slice_viewer(nii_im.transpose(1, 0, 2), nii_lab.transpose(1, 0, 2))
+fig, ax = plt.subplots(1, 3)
+ax[0].imshow(nii_im[nii_im.shape[0] // 2], cmap='Greys_r')
+plt.imsave("saggital.png", nii_im[25], cmap='Greys_r')
+ax[1].imshow(nii_im.transpose(1, 0, 2)[nii_im.shape[1] // 2], cmap='Greys_r')
+plt.imsave("coronal.png", nii_im.transpose(1, 0, 2)[nii_im.shape[1] // 2], cmap='Greys_r')
+ax[2].imshow(nii_im.transpose(2, 1, 0)[nii_im.shape[2] // 2], cmap='Greys_r')
+plt.imsave("axial.png", nii_im.transpose(2, 1, 0)[nii_im.shape[2] // 2], cmap='Greys_r')
+plt.show()
+

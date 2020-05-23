@@ -10,15 +10,16 @@ class UNetTrainer(Trainer):
 
     def __init__(self, device, n_channels=1, n_classes=1, load_model=None):
         self.device = device
+        self.name = "unet"
         self.mask_type = torch.float32 if n_classes == 1 else torch.long
-        net = UNet(n_channels=n_channels, n_classes=n_classes)
+        self.net = UNet(n_channels=n_channels, n_classes=n_classes)
 
         if load_model is not None:
             self.net.load_state_dict(
-                torch.load(load_model, map_location=device)
+                torch.load(load_model, map_location=device), strict=False
             )
 
-        self.net = net.to(device)
+        self.net = self.net.to(device)
         self.criterion = nn.BCELoss() if self.net.n_classes == 1 else nn.CrossEntropyLoss()
 
     def predict(self, imgs, true_masks):
@@ -48,9 +49,11 @@ class UNetTrainer(Trainer):
             one_hot.zero_()
             one_hot.scatter_(1, max_idx, 1)
 
-            dice.append(dice_coeff(one_hot[:, 1, :, :], (true_masks == 1).float().squeeze(1)).item())
-            dice.append(dice_coeff(one_hot[:, 2, :, :], (true_masks == 1).float().squeeze(1)).item())
-            dice.append(dice_coeff(one_hot[:, 3, :, :], (true_masks == 1).float().squeeze(1)).item())
+            for k in range(1, one_hot.shape[1]):
+                input = one_hot[:, k, :, :]
+                target = (true_masks == k).float().squeeze(1)
+                d = dice_coeff(input, target)
+                dice.append(d.item())
 
 
         # Calculate accuracy, sensitivity and specificity scalars
@@ -89,8 +92,8 @@ class UNetTrainer(Trainer):
                 img = masks
         else:
             # TODO: Extend the colors if more classes are added
-            colors = [torch.Tensor([0., 0., 0.]), torch.Tensor([1., 0., 0.]), torch.Tensor([0., 1., 0.]),
-                      torch.Tensor([0., 0., 1.])]
+            colors = [torch.Tensor([0., 0., 0.]), torch.Tensor([0., 0., 1.]),
+                      torch.Tensor([0., 1., 0.]), torch.Tensor([1., 0., 0.])]
             batch, _, h, w = masks.shape
             if prediction:
                 pred_mask_img = torch.zeros((batch, h, w, 3))
@@ -110,4 +113,4 @@ class UNetTrainer(Trainer):
 
                 img = true_mask_img.permute(0, 3, 1, 2)
 
-            return img
+        return img

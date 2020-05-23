@@ -12,6 +12,7 @@ class ProbUNetTrainer(Trainer):
     def __init__(self, device, n_channels=1, n_classes=1, load_model=None, latent_dim=6):
         self.device = device
         self.mask_type = torch.float32
+        self.name = "probunet"
         self.net = ProbabilisticUnet(input_channels=n_channels, num_classes=n_classes, num_filters=[64,128,256,512,1024], latent_dim=latent_dim, no_convs_fcomb=4, beta=10.0)
 
         if load_model is not None:
@@ -32,8 +33,8 @@ class ProbUNetTrainer(Trainer):
 
     def loss(self, imgs, true_masks, masks_pred):
         elbo = self.net.elbo(true_masks)
-        reg_loss = l2_regularisation(self.net.posterior) + l2_regularisation(self.net.prior) + l2_regularisation(self.net.fcomb.layers)
-        loss = -elbo + 1e-5 * reg_loss
+        #reg_loss = l2_regularisation(self.net.posterior) + l2_regularisation(self.net.prior) + l2_regularisation(self.net.fcomb.layers)
+        loss = -elbo# + 1e-5 * reg_loss
 
         return loss
 
@@ -73,7 +74,7 @@ class ProbUNetTrainer(Trainer):
                 for b in range(batch):
                     for i in range(h):
                         for j in range(w):
-                            pred_mask_img[b, i, j] = colors[pred_idx[b, i, j]]
+                            pred_mask_img[b, i, j] = colors[pred_idx[b, i, j] + 1]
 
                 img = pred_mask_img.permute(0, 3, 1, 2)
             else:
@@ -82,8 +83,8 @@ class ProbUNetTrainer(Trainer):
                     for i in range(h):
                         for j in range(w):
                             index = int(masks.squeeze(1)[b, i, j])
-                            true_mask_img[b, i, j] = colors[index]
+                            true_mask_img[b, i, j] = colors[index + 1]
 
                 img = true_mask_img.permute(0, 3, 1, 2)
 
-            return img
+        return img

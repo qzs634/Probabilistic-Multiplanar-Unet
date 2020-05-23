@@ -91,6 +91,7 @@ class AxisAlignedConvGaussian(nn.Module):
         self.show_enc = encoding
 
         #We only want the mean of the resulting hxw image
+        #
         encoding = torch.mean(encoding, dim=2, keepdim=True)
         encoding = torch.mean(encoding, dim=3, keepdim=True)
 
@@ -223,6 +224,8 @@ class ProbabilisticUnet(nn.Module):
         """
         Sample a segmentation by reconstructing from a prior sample
         and combining this with UNet features
+        
+        
         """
         if testing == False:
             z_prior = self.prior_latent_space.rsample()
@@ -278,7 +281,7 @@ class ProbabilisticUnet(nn.Module):
         Calculate the evidence lower bound of the log-likelihood of P(Y|X)
         """
         if self.n_classes == 1:
-            criterion = nn.BCEWithLogitsLoss(size_average = False, reduce=False, reduction=None)
+            criterion = nn.BCEWithLogitsLoss(size_average=False, reduce=False, reduction=None)
         else:
             criterion = nn.CrossEntropyLoss()
 
@@ -289,7 +292,9 @@ class ProbabilisticUnet(nn.Module):
         #Here we use the posterior sample sampled above
         self.reconstruction = self.reconstruct(use_posterior_mean=reconstruct_posterior_mean, calculate_posterior=False, z_posterior=z_posterior)
         #self.reconstruction = self.reconstruction.to(device=device, dtype=torch.long)
+
         segm = segm.to(device=device, dtype=torch.long).squeeze(1)
+
 
         reconstruction_loss = criterion(input=self.reconstruction, target=segm)
         self.reconstruction_loss = torch.sum(reconstruction_loss)

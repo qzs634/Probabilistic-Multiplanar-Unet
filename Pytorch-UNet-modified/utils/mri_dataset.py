@@ -40,10 +40,12 @@ class MRI_Dataset(Dataset):
                     mask_slice = self.sample_slice(mask, self.views[view], slice)
 
                     if filter:
-                        if np.max(mask_slice) > 1:
+                        if np.max(mask_slice) > 0:
                             self.index_map.append((scan, view, slice))
                     else:
                         self.index_map.append((scan, view, slice))
+
+        np.random.shuffle(self.index_map)
 
         self.len = len(self.index_map)
         logging.info(f'Creating dataset of {len(self.ids)} scans, and {self.len} slices')
@@ -51,7 +53,7 @@ class MRI_Dataset(Dataset):
 
 
     def __len__(self):
-        return self.len
+        return 100 #self.len
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
@@ -126,8 +128,6 @@ class MRI_Dataset(Dataset):
         img = self.preprocess(img_slice, label=False)
         mask = self.preprocess(mask_slice, label=True)
 
-        if self.n_classes == 1:
-            mask = (mask > 1).astype(np.float32)
 
         if True: #np.max(mask) > 1:
             return {'image': torch.from_numpy(img).float(), 'mask': torch.from_numpy(mask).float()}

@@ -23,6 +23,8 @@ dir_img  = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\ima
 dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\labels" #"data/masks/"
 dir_checkpoint = 'checkpoints/'
 
+global_counter = 0
+
 def train_net(trainer,
               device,
               epochs=5,
@@ -39,10 +41,13 @@ def train_net(trainer,
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
 
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    # gradient accumulator steps
+    acc_steps = 2 if batch_size > 2 else 1
 
-    writer = SummaryWriter(comment=f'_EP_{epochs}_LR_{lr}_BS_{batch_size}')
+    train_loader = DataLoader(train, batch_size=batch_size // acc_steps, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val, batch_size=batch_size // acc_steps, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
+
+    writer = SummaryWriter(comment=f'LRF_{lrf}_LRP_{lrp}_EP_{epochs}_LR_{lr}_BS_{batch_size}')
     global_step = 0
     global_step_size = 1
 
@@ -62,34 +67,49 @@ def train_net(trainer,
 
 
     for epoch in range(epochs):
+
         trainer.net.train()
 
         with tqdm(total=n_train + n_val, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
             for phase in ["train", "validation"]:
                 if phase == "train":
-                    for batch in train_loader:
+                    optimizer.zero_grad()
+                    out_loss = 0
+                    for i, batch in enumerate(train_loader):
                         imgs = batch['image']
                         true_masks = batch['mask']
 
-                        assert imgs.shape[1] == trainer.net.n_channels, \
-                            f'Network has been defined with {trainer.net.n_channels} input channels, ' \
-                            f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
-                            'the images are loaded correctly.'
-
                         imgs = imgs.to(device=trainer.device, dtype=torch.float32)
                         true_masks = true_masks.to(device=device, dtype=trainer.mask_type)
+                        #print(torch.unique(true_masks))
 
                         masks_pred = trainer.predict(imgs, true_masks)
 
+                        if device == 'cuda':
+                            del imgs
+                            del true_masks
+                            torch.cuda.empty_cache()
+
                         loss = trainer.loss(imgs, true_masks, masks_pred)
+                        loss = loss / acc_steps
+                        #out_loss += loss.item()
 
-                        writer.add_scalar('Loss/train', loss.item(), global_step)
-                        pbar.set_postfix(**{'loss (batch)': loss.item()})
-
-                        optimizer.zero_grad()
                         loss.backward()
-                        nn.utils.clip_grad_value_(trainer.net.parameters(), 0.1)
-                        optimizer.step()
+
+                        # At accumulated target batch size, take optimizer step
+                        # E.g. target batch size is 8, mini batches are size 2, so every 4th iteration take optim step
+                        if (i + 1) % acc_steps == 0:
+                            out_loss = loss.item()
+                            writer.add_scalar('Loss/train', out_loss, global_step)
+                            pbar.set_postfix(**{'loss (batch)': out_loss})
+                            out_loss = 0
+
+                            nn.utils.clip_grad_value_(trainer.net.parameters(), 0.1)
+                            optimizer.step()
+                            optimizer.zero_grad()
+
+                            if device == 'cuda':
+                                torch.cuda.empty_cache()
 
                         global_step += global_step_size
                         pbar.update(imgs.shape[0])
@@ -109,6 +129,7 @@ def train_net(trainer,
 
                     val_count = len(val_loader)  # the number of batches in validation set
                     # Array of dice scores for each class, except for background
+                    dices = 0
                     dice_sums = np.array([0.0] * (trainer.net.n_classes - 1)) # [0] * 3 -> [0, 0, 0]
                     loss_sum = 0
                     for batch in val_loader:
@@ -121,7 +142,11 @@ def train_net(trainer,
 
                         # Add the new dice scores to each class element wise
                         dice = trainer.eval(imgs, true_masks, masks_pred)
-                        dice_sums += dice
+                        #print(dice)
+                        if trainer.net.n_classes > 1:
+                            dice_sums += dice
+                        else:
+                            dices += dice
 
                         # Calculate validation loss
                         loss_sum += trainer.loss(imgs, true_masks, masks_pred).item()
@@ -129,6 +154,7 @@ def train_net(trainer,
                         # Write a single image during validation
                         if (global_step % val_count) == 0:
                             writer.add_images('images', imgs, global_step)
+
                             writer.add_images('masks/true', trainer.mask_to_image(true_masks), global_step)
                             writer.add_images('masks/pred', trainer.mask_to_image(masks_pred, prediction=True), global_step)
 
@@ -142,11 +168,12 @@ def train_net(trainer,
                     writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
 
                     for c in range(trainer.net.n_classes - 1):
+                        print(dice_sums[c], val_count)
                         writer.add_scalar(f'dice/class_{c + 1}', dice_sums[c] / val_count, global_step)
 
                     #Adjust learning rate based on metric
                     if trainer.net.n_classes == 1:
-                        val_score = dice_sum[0] / val_count
+                        val_score = (dices / val_count)[0]
                         logging.info('Validation Dice Coeff: {}'.format(val_score))
                         writer.add_scalar('metrics/dice', val_score, global_step)
                     else:
@@ -154,10 +181,15 @@ def train_net(trainer,
 
                     scheduler.step(val_score)
 
+                #save checkpoint
+                torch.save(trainer.net.state_dict(),
+                           dir_checkpoint + trainer.name + f'_checkpoint{epoch}.pt')
+                logging.info(f'Saved model {trainer.name}_checkpoint{epoch}.pt')
+
     # End of training
     torch.save(trainer.net.state_dict(),
-               dir_checkpoint + 'model.pt')
-    logging.info(f'Saved model ')
+               dir_checkpoint + trainer.name + str(global_counter) + '_model.pt')
+    logging.info(f'Saved model {trainer.name}{global_counter}_model.pt')
     writer.close()
 
 
@@ -172,7 +204,7 @@ def get_args():
                         help='Learning rate', dest='lr')
     parser.add_argument('-r', '--schedule-factor', metavar='LRF', type=float, nargs='?', default=0.1,
                         help='Learning rate scheduler factor', dest='lrf')
-    parser.add_argument('-p', '--schedule-patience', metavar='LRP', type=int, nargs='?', default=2,
+    parser.add_argument('-p', '--schedule-patience', metavar='LRP', type=int, nargs='?', default=5,
                         help='Learning rate scheduler patience', dest='lrp')
     parser.add_argument('-o', '--optimizer-momentum', metavar='OM', type=float, nargs='?', default=0.9,
                         help='Optimizer momentum', dest='om')
@@ -202,12 +234,11 @@ if __name__ == '__main__':
     #   - For 1 class and background, use n_classes=1
     #   - For 2 classes, use n_classes=1
     #   - For N > 2 classes, use n_classes=N
-    n_classes = 4
 
     if args.net == "unet":
-        trainer = UNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load)
+        trainer = UNetTrainer(device, n_channels=1, n_classes=1, load_model=args.load)
     elif args.net == "probunet":
-        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load, latent_dim=2)
+        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load, latent_dim=12)
     else:
         print("Error! {} is not a valid model".format(args.net))
 
@@ -218,19 +249,24 @@ if __name__ == '__main__':
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
+    learning_rates = [1e-2, 5e-3, 1e-3, 1e-4]
+    factors = [0.9, 0.1]
+
     try:
-            train_net(trainer,
+        trainer = UNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load)
+        train_net(trainer,
                       epochs=args.epochs,
                       batch_size=args.batchsize,
                       lr=args.lr,
-                      lrf=args.lrf,
-                      lrp=args.lrp,
+                      lrf= 0.9,
+                      lrp=2,
                       om=args.om,
                       device=device,
                       val_percent=args.val / 100)
+        global_counter += 1
 
     except KeyboardInterrupt:
-        #torch.save(trainer.net.state_dict(), 'INTERRUPTED.pth')
+        torch.save(trainer.net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
         try:
             sys.exit(0)

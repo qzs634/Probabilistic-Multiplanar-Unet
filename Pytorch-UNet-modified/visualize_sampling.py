@@ -24,12 +24,13 @@ def visualize_sample(train, slice, true_mask, n_preds, mu, sigma):
         zs = []
         for z_1 in range(n_preds):
             z = torch.Tensor([(z_0 - mu[0])/sigma[0], (z_1 - mu[1])/sigma[1]])
-            sample = train.predict(slice, true_mask)
+            sample = train.predict(slice, true_mask, z=z)
             mask = train.mask_to_image(sample, prediction=True)
             zs.append(mask)
         predictions.append(zs)
 
 
+    plt.axis('off')
     fig, ax = plt.subplots(1 + n_preds, n_preds)
     ax[0][0].imshow(slice.cpu().numpy().squeeze(), cmap="Greys_r")
     mask_img = train.mask_to_image(true_mask, prediction=False).cpu().numpy().squeeze().transpose(1, 2, 0)
@@ -40,16 +41,17 @@ def visualize_sample(train, slice, true_mask, n_preds, mu, sigma):
             pred = predictions[z_0][z_1]
             pred = pred.cpu().numpy().squeeze().transpose(1, 2, 0)
             ax[z_0 + 1, z_1].imshow(pred.astype(np.uint8) * 255)
+    fig.tight_layout()
     plt.show()
 
 
 if __name__ == "__main__":
     trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4,
-                              load_model=r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\checkpoints\model.pth", latent_dim=2)
+                              load_model=r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\checkpoints\probunet_checkpoint11.pt", latent_dim=2)
     #trainer.net.eval()
 
-    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\images"  # "data/imgs/"
-    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\labels"  # "data/masks/"
+    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\train\images"  # "data/imgs/"
+    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\train\labels"  # "data/masks/"
     dataset = MRI_Dataset(dir_img, dir_mask, trainer.net.n_classes)
 
     loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, pin_memory=True, drop_last=False)
@@ -65,6 +67,6 @@ if __name__ == "__main__":
     sigma = trainer.net.prior_latent_space.base_dist.scale
     sigma = sigma.squeeze()
 
-    visualize_sample(trainer, img, mask, 2, mu.squeeze(), sigma.squeeze())
+    visualize_sample(trainer, img, mask, 4, mu.squeeze(), sigma.squeeze())
 
 

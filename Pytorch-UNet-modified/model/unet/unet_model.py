@@ -47,10 +47,16 @@ class UNet(nn.Module):
             xs.append(self.up_blocks[i](xs[-1], xs[-(2 + i * 2)]))
         xs.append(self.outc(xs[-1]))
 
+        out = xs[-1]
+        last_layer = xs[-2]
+
+        del xs
+        torch.cuda.empty_cache()
+
         if self.n_classes == 1:
-            xs[-1] = torch.sigmoid(xs[-1])
+            out = torch.sigmoid(out)
 
         if self.apply_last_layer:
-            return xs[-1]
+            return out
         else:
-            return xs[-2]
+            return last_layer
