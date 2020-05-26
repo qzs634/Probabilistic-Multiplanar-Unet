@@ -2,7 +2,7 @@ import argparse
 import logging
 import os
 import sys
-
+import gc
 import numpy as np
 import torch
 import torch.nn as nn
@@ -23,6 +23,8 @@ dir_img  = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\ima
 dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\train\labels" #"data/masks/"
 dir_checkpoint = 'checkpoints/'
 
+dataset = None
+
 global_counter = 0
 
 def train_net(trainer,
@@ -36,7 +38,7 @@ def train_net(trainer,
               val_percent=0.1,
               save_cp=False):
 
-    dataset = MRI_Dataset(dir_img, dir_mask, trainer.net.n_classes)
+    #dataset = MRI_Dataset(dir_img, dir_mask, trainer.net.n_classes)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
@@ -44,8 +46,8 @@ def train_net(trainer,
     # gradient accumulator steps
     acc_steps = 4 if batch_size > 4 else 1
 
-    train_loader = DataLoader(train, batch_size=batch_size // acc_steps, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val, batch_size=batch_size // acc_steps, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train, batch_size=batch_size // acc_steps, shuffle=True, num_workers=6, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val, batch_size=batch_size // acc_steps, shuffle=False, num_workers=6, pin_memory=True, drop_last=True)
 
     writer = SummaryWriter(comment=f'LRF_{lrf}_LRP_{lrp}_EP_{epochs}_LR_{lr}_BS_{batch_size}')
     global_step = 0
@@ -142,7 +144,6 @@ def train_net(trainer,
 
                         # Add the new dice scores to each class element wise
                         dice = trainer.eval(imgs, true_masks, masks_pred)
-                        #print(dice)
                         if trainer.net.n_classes > 1:
                             dice_sums += dice
                         else:
@@ -168,7 +169,6 @@ def train_net(trainer,
                     writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
 
                     for c in range(trainer.net.n_classes - 1):
-                        #print(dice_sums[c], val_count)
                         writer.add_scalar(f'dice/class_{c + 1}', dice_sums[c] / val_count, global_step)
 
                     #Adjust learning rate based on metric
@@ -181,10 +181,13 @@ def train_net(trainer,
 
                     scheduler.step(val_score)
 
-                #save checkpoint
+                # End of epoch
+                # Save checkpoint
                 torch.save(trainer.net.state_dict(),
                            dir_checkpoint + trainer.name + f'_checkpoint{epoch}.pt')
                 logging.info(f'Saved model {trainer.name}_checkpoint{epoch}.pt')
+
+                gc.collect()
 
     # End of training
     torch.save(trainer.net.state_dict(),
@@ -238,7 +241,7 @@ if __name__ == '__main__':
     if args.net == "unet":
         trainer = UNetTrainer(device, n_channels=1, n_classes=1, load_model=args.load)
     elif args.net == "probunet":
-        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=args.load, latent_dim=12)
+        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load, latent_dim=12)
     else:
         print("Error! {} is not a valid model".format(args.net))
 
@@ -246,11 +249,13 @@ if __name__ == '__main__':
         dir_img = os.path.join(args.dir, "images")
         dir_mask = os.path.join(args.dir, "labels")
 
+    dataset = MRI_Dataset(dir_img, dir_mask, 3)
+
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
     learning_rates = [1e-2, 5e-3, 1e-3, 1e-4]
-    latent_dim = [2, 6, 12]
+    latent_dim = [6, 12]
 
     try:
         for ld in latent_dim:
@@ -266,6 +271,9 @@ if __name__ == '__main__':
                               device=device,
                               val_percent=args.val / 100)
                 global_counter += 1
+                del trainer
+                torch.cuda.empty_cache()
+                gc.collect()
 
     except KeyboardInterrupt:
         torch.save(trainer.net.state_dict(), 'INTERRUPTED.pth')

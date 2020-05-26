@@ -36,10 +36,12 @@ class Encoder(nn.Module):
                 layers.append(nn.AvgPool2d(kernel_size=2, stride=2, padding=0, ceil_mode=True))
             
             layers.append(nn.Conv2d(input_dim, output_dim, kernel_size=3, padding=int(padding)))
+            layers.append(nn.BatchNorm2d(output_dim))
             layers.append(nn.ReLU(inplace=True))
 
             for _ in range(no_convs_per_block-1):
                 layers.append(nn.Conv2d(output_dim, output_dim, kernel_size=3, padding=int(padding)))
+                layers.append(nn.BatchNorm2d(output_dim))
                 layers.append(nn.ReLU(inplace=True))
 
         self.layers = nn.Sequential(*layers)
@@ -189,13 +191,13 @@ class ProbabilisticUnet(nn.Module):
     no_cons_per_block: no convs per block in the (convolutional) encoder of prior and posterior
     """
 
-    def __init__(self, input_channels=1, num_classes=1, num_filters=[32,64,128,192], latent_dim=6, no_convs_fcomb=4, beta=10.0):
+    def __init__(self, input_channels=1, num_classes=1, num_filters=[32,64,128,192], latent_dim=6, no_convs_fcomb=3, beta=1.0):
         super(ProbabilisticUnet, self).__init__()
         self.n_channels = input_channels
         self.n_classes = num_classes
         self.num_filters = num_filters
         self.latent_dim = latent_dim
-        self.no_convs_per_block = 3
+        self.no_convs_per_block = 2
         self.no_convs_fcomb = no_convs_fcomb
         self.initializers = {'w':'he_normal', 'b':'normal'}
         self.beta = beta
@@ -286,6 +288,8 @@ class ProbabilisticUnet(nn.Module):
             criterion = nn.CrossEntropyLoss(size_average=False, reduce=False, reduction=None)
 
         z_posterior = self.posterior_latent_space.rsample()
+        #print(z_posterior)
+
         
         self.kl = torch.mean(self.kl_divergence(analytic=analytic_kl, calculate_posterior=False, z_posterior=z_posterior))
 
@@ -298,7 +302,7 @@ class ProbabilisticUnet(nn.Module):
 
         reconstruction_loss = criterion(input=self.reconstruction, target=segm)
         self.reconstruction_loss = torch.sum(reconstruction_loss)
-        self.mean_reconstruction_loss = torch.mean(reconstruction_loss)
+        #self.mean_reconstruction_loss = torch.mean(self.reconstruction_loss)
 
         #print(f"loss: kl={self.kl}, ce={self.reconstruction_loss}")
         return -(self.reconstruction_loss + self.beta * self.kl)
