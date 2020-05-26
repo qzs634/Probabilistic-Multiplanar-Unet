@@ -29,15 +29,6 @@ class UNet(nn.Module):
 
     def forward(self, x):
 
-        """
-        print(f"inc = {self.inc}")
-        for block in self.down_blocks:
-            print(f"down = {block}")
-        for block in self.up_blocks:
-            print(f"up = {block}")
-        print(f"outc = {self.outc}")
-        """
-
         xs = []
         xs.append(self.inc(x))
         for i in range(len(self.down_blocks)):

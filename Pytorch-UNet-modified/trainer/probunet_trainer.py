@@ -51,9 +51,11 @@ class ProbUNetTrainer(Trainer):
             one_hot.zero_()
             one_hot.scatter_(1, max_idx, 1)
 
-            dice.append(dice_coeff(one_hot[:, 1, :, :], (true_masks == 1).float().squeeze(1)).item())
-            dice.append(dice_coeff(one_hot[:, 2, :, :], (true_masks == 1).float().squeeze(1)).item())
-            dice.append(dice_coeff(one_hot[:, 3, :, :], (true_masks == 1).float().squeeze(1)).item())
+            for k in range(1, one_hot.shape[1]):
+                input = one_hot[:, k, :, :]
+                target = (true_masks == k).float().squeeze(1)
+                d = dice_coeff(input, target)
+                dice.append(d.item())
 
         return np.array(dice)
 
@@ -65,8 +67,8 @@ class ProbUNetTrainer(Trainer):
                 img = masks
         else:
             # TODO: Extend the colors if more classes are added
-            colors = [torch.Tensor([0., 0., 0.]), torch.Tensor([1., 0., 0.]), torch.Tensor([0., 1., 0.]),
-                      torch.Tensor([0., 0., 1.])]
+            colors = [torch.Tensor([0., 0., 0.]), torch.Tensor([0., 0., 1.]),
+                      torch.Tensor([0., 1., 0.]), torch.Tensor([1., 0., 0.])]
             batch, _, h, w = masks.shape
             if prediction:
                 pred_mask_img = torch.zeros((batch, h, w, 3))
@@ -74,7 +76,7 @@ class ProbUNetTrainer(Trainer):
                 for b in range(batch):
                     for i in range(h):
                         for j in range(w):
-                            pred_mask_img[b, i, j] = colors[pred_idx[b, i, j] + 1]
+                            pred_mask_img[b, i, j] = colors[pred_idx[b, i, j]]
 
                 img = pred_mask_img.permute(0, 3, 1, 2)
             else:
@@ -83,7 +85,7 @@ class ProbUNetTrainer(Trainer):
                     for i in range(h):
                         for j in range(w):
                             index = int(masks.squeeze(1)[b, i, j])
-                            true_mask_img[b, i, j] = colors[index + 1]
+                            true_mask_img[b, i, j] = colors[index]
 
                 img = true_mask_img.permute(0, 3, 1, 2)
 

@@ -42,7 +42,7 @@ def train_net(trainer,
     train, val = random_split(dataset, [n_train, n_val])
 
     # gradient accumulator steps
-    acc_steps = 2 if batch_size > 2 else 1
+    acc_steps = 4 if batch_size > 4 else 1
 
     train_loader = DataLoader(train, batch_size=batch_size // acc_steps, shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val, batch_size=batch_size // acc_steps, shuffle=False, num_workers=4, pin_memory=True, drop_last=True)
@@ -168,7 +168,7 @@ def train_net(trainer,
                     writer.add_scalar('learning_rate', optimizer.param_groups[0]['lr'], global_step)
 
                     for c in range(trainer.net.n_classes - 1):
-                        print(dice_sums[c], val_count)
+                        #print(dice_sums[c], val_count)
                         writer.add_scalar(f'dice/class_{c + 1}', dice_sums[c] / val_count, global_step)
 
                     #Adjust learning rate based on metric
@@ -250,20 +250,22 @@ if __name__ == '__main__':
     # cudnn.benchmark = True
 
     learning_rates = [1e-2, 5e-3, 1e-3, 1e-4]
-    factors = [0.9, 0.1]
+    latent_dim = [2, 6, 12]
 
     try:
-        trainer = UNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load)
-        train_net(trainer,
-                      epochs=args.epochs,
-                      batch_size=args.batchsize,
-                      lr=args.lr,
-                      lrf= 0.9,
-                      lrp=2,
-                      om=args.om,
-                      device=device,
-                      val_percent=args.val / 100)
-        global_counter += 1
+        for ld in latent_dim:
+            for lr in learning_rates:
+                trainer = ProbUNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load, latent_dim=ld)
+                train_net(trainer,
+                              epochs=args.epochs,
+                              batch_size=args.batchsize,
+                              lr=lr,
+                              lrf= 0.1,
+                              lrp= 2,
+                              om=args.om,
+                              device=device,
+                              val_percent=args.val / 100)
+                global_counter += 1
 
     except KeyboardInterrupt:
         torch.save(trainer.net.state_dict(), 'INTERRUPTED.pth')

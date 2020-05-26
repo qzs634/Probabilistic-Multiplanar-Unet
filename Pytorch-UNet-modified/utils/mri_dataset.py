@@ -16,7 +16,7 @@ def mri_collate(batch):
 
 class MRI_Dataset(Dataset):
 
-    def __init__(self, imgs_dir, masks_dir, n_classes, filter=True):
+    def __init__(self, imgs_dir, masks_dir, n_classes, filter=True, ):
         self.imgs_dir = imgs_dir
         self.masks_dir = masks_dir
         self.n_classes = n_classes
@@ -53,7 +53,7 @@ class MRI_Dataset(Dataset):
 
 
     def __len__(self):
-        return 100 #self.len
+        return 500 #self.len
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]

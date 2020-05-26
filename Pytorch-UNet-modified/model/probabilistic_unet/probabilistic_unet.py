@@ -283,7 +283,7 @@ class ProbabilisticUnet(nn.Module):
         if self.n_classes == 1:
             criterion = nn.BCEWithLogitsLoss(size_average=False, reduce=False, reduction=None)
         else:
-            criterion = nn.CrossEntropyLoss()
+            criterion = nn.CrossEntropyLoss(size_average=False, reduce=False, reduction=None)
 
         z_posterior = self.posterior_latent_space.rsample()
         
@@ -291,7 +291,7 @@ class ProbabilisticUnet(nn.Module):
 
         #Here we use the posterior sample sampled above
         self.reconstruction = self.reconstruct(use_posterior_mean=reconstruct_posterior_mean, calculate_posterior=False, z_posterior=z_posterior)
-        #self.reconstruction = self.reconstruction.to(device=device, dtype=torch.long)
+        self.reconstruction = self.reconstruction.to(device=device, dtype=torch.float32)
 
         segm = segm.to(device=device, dtype=torch.long).squeeze(1)
 
@@ -299,4 +299,6 @@ class ProbabilisticUnet(nn.Module):
         reconstruction_loss = criterion(input=self.reconstruction, target=segm)
         self.reconstruction_loss = torch.sum(reconstruction_loss)
         self.mean_reconstruction_loss = torch.mean(reconstruction_loss)
+
+        #print(f"loss: kl={self.kl}, ce={self.reconstruction_loss}")
         return -(self.reconstruction_loss + self.beta * self.kl)
