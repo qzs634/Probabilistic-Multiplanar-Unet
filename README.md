@@ -1,4 +1,4 @@
-The Bachelor
+Probabilistic Multiplanar U-net
 
 #### Environment
 - To create environment: `conda create -n envname python=3.7`
