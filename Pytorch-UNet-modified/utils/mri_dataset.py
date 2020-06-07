@@ -45,7 +45,7 @@ class MRI_Dataset(Dataset):
                     else:
                         self.index_map.append((scan, view, slice))
 
-        np.random.shuffle(self.index_map)
+        #np.random.shuffle(self.index_map)
 
         self.len = len(self.index_map)
         logging.info(f'Creating dataset of {len(self.ids)} scans, and {self.len} slices')
@@ -53,7 +53,7 @@ class MRI_Dataset(Dataset):
 
 
     def __len__(self):
-        return 500 #self.len
+        return self.len
 
     def initialize_views(self, use_standard_axis=False):
         standard_axis = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]

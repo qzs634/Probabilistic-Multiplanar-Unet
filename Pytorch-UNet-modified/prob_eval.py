@@ -1,18 +1,19 @@
 import numpy as np
-import sys
+import os
+import gc
 import argparse
 import logging
-from trainer import ProbUNetTrainer
 from dice_loss import dice_coeff
 from tqdm import tqdm
 import torch
 from torch.nn.functional import softmax
 from utils.mri_dataset import MRI_Dataset
 from torch.utils.data import DataLoader, SequentialSampler
+from trainer import UNetTrainer, ProbUNetTrainer
 import nibabel as nib
 
 torch.set_printoptions(threshold=5000)
-# np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
 """
 Eval:
@@ -23,14 +24,14 @@ Eval:
     - compare all view's segmentation volumes against ground truth
 - combine all segmentations to one average segmentation volume
 """
-
-
 def get_args():
     parser = argparse.ArgumentParser(description='Predict using a trained UNet',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('-f', '--load', dest='load', type=str, default=False,
                         help='Load model from a .pth file')
+    parser.add_argument('-d', '--dir', dest='dir', type=str, default=None,
+                        help='image and label superdirs.')
 
     return parser.parse_args()
 
@@ -44,20 +45,20 @@ def dice(pred, truth, class_index):
     dice = dice_coeff(one_hot[:, class_index, :, :], (truth == class_index).float().squeeze(1)).item()
     return dice
 
-
-def volume_to_nii(volume, title):
+def volume_to_nii(volume, title, predicted=True):
     argmax = torch.argmax(volume, axis=1)
-    nii = nib.Nifti1Image(argmax.cpu().numpy().astype(np.float32), affine=np.eye(4))
+    if predicted:
+        nii = nib.Nifti1Image(argmax.cpu().numpy().astype(np.float32), affine=np.eye(4))
+    else:
+        nii = nib.Nifti1Image(volume.cpu().numpy().astype(np.float32), affine=np.eye(4))
     nib.save(nii, title)
-
 
 def slices_to_volume(slices):
     volume = slices[0]
     for slice in slices[1:]:
-        volume = torch.cat([volume, slice])
+        volume = torch.cat([volume,slice])
 
     return volume
-
 
 if __name__ == "__main__":
     printstr = """
@@ -79,25 +80,44 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Using device {device}')
 
-    str = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\checkpoints\probunet_checkpoint10.pt"
-    train = ProbUNetTrainer(device, n_channels=1, n_classes=4, load_model=str, latent_dim=2)
+    train = ProbUNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load, latent_dim=6, beta=10)
 
-    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\test\images"
-    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\test\labels"
+    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\images"
+    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder\test\labels"
+
+    if args.dir is not None:
+        dir_img = os.path.join(args.dir, "images")
+        dir_mask = os.path.join(args.dir, "labels")
 
     dataset = MRI_Dataset(dir_img, dir_mask, train.net.n_classes, filter=False)
 
     sampler = SequentialSampler(dataset)
-    loader = DataLoader(dataset, batch_size=1, shuffle=False, sampler=sampler, num_workers=0, pin_memory=True,
-                        drop_last=False)
+    loader = DataLoader(dataset, batch_size=1, shuffle=False, sampler=sampler, num_workers=0, pin_memory=True, drop_last=False)
 
     mask_type = torch.float32 if train.net.n_classes == 1 else torch.long
 
     print("Creating predicted slices")
     n = 0
     N = len(dataset)
+
+    # number of slices in a volume
+    n_slices = dataset.image_dims[0] + dataset.image_dims[1] + dataset.image_dims[2]
+
     predicted = []
     truths = []
+
+    dice_sums = [] #np.array([0.0] * (train.net.n_classes - 1))
+    best_volume = None
+    true_volume = None
+    best_index = 0
+    best_dice = None
+
+    slice_count = 0
+    img_count = 0
+
+    vol_1_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
+    vol_2_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
+    vol_3_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
     with tqdm(total=N, desc=f'Predictions ', unit='img') as pbar:
         for data in loader:
             img = data['image']
@@ -107,66 +127,79 @@ if __name__ == "__main__":
 
             truths.append(true_mask)
 
-            pred_masks = None # 6, c, h, w
+            pred_masks = None  # 6, c, h, w
             with torch.no_grad():
-                for _ in range(6):
+                for _ in range(5):
                     if pred_masks is None:
                         pred_masks = train.predict(img, true_mask)
                     else:
                         pred_masks + train.predict(img, true_mask)
 
-            pred_masks /= 6
+            pred_masks /= 5
+            #print(train.eval(img, true_mask, pred_masks))
             probs = softmax(pred_masks, dim=1)
-            """
-                .data
-            max_idx = torch.argmax(probs, 1, keepdim=True)
-            one_hot = torch.FloatTensor(probs.shape).to(device=device)
-            one_hot.zero_()
-            one_hot.scatter_(1, max_idx, 1)
-            """
 
             predicted.append(probs)
+            slice_count += 1
+            if slice_count == n_slices:
+                """
+                slice count is equal to all slices in volume
+                """
+
+                i = 0
+                predicted = np.array(predicted)
+
+                true_mask = torch.cat(truths[i:i + dataset.image_dims[0]])
+                true_mask = slices_to_volume(true_mask)
+
+                volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]]) # [1, 3, 256, 256, 256]
+                vol_1_dice.append(np.array([dice(volume1, true_mask, 1), dice(volume1, true_mask, 2)]))
+                i += dataset.image_dims[0]
+
+                # permute rotates the volume image to match the ground truth label
+                volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
+                vol_2_dice.append(np.array([dice(volume2, true_mask, 1), dice(volume2, true_mask, 2)]))
+                i += dataset.image_dims[1]
+
+                volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]]).permute(2, 1, 3, 0)
+                vol_3_dice.append(np.array([dice(volume3, true_mask, 1), dice(volume3, true_mask, 2)]))
+                i += dataset.image_dims[2]
+
+                avg_volume = (volume1 + volume2 + volume3) / 3.0
+                volume_to_nii(avg_volume, os.path.join(r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\predictions\probunet-labels", dataset.ids[img_count]))
+                del volume1
+                del volume2
+                del volume3
+                torch.cuda.empty_cache()
+
+                dices = np.array([dice(avg_volume, true_mask, 1), dice(avg_volume, true_mask, 2)])
+
+                dice_sums.append(dices)
+                del avg_volume
+
+                img_count += 1
+                slice_count = 0
+                predicted = []
+                truths = []
+
+                gc.collect()
+
             n += 1
             pbar.update(1)
 
-    predicted = np.array(predicted)
+        print("best dice: ", best_dice)
+        v1_mean = np.mean(np.array(vol_1_dice), axis=0)
+        v1_std = np.std(np.array(vol_1_dice), axis=0)
+        print(f"view 1 dice: mean={v1_mean}, std={v1_std}")
 
-    dice_scores = []
+        v2_mean = np.mean(np.array(vol_2_dice), axis=0)
+        v2_std = np.std(np.array(vol_2_dice), axis=0)
+        print(f"view 2 dice: mean={v2_mean}, std={v2_std}")
 
-    img_count = 0
-    with tqdm(total=np.ceil(len(predicted) / dataset.image_dims[0]), desc=f'Segmentation volumes', unit='segmentations') as pbar:
-        for id in dataset.ids:
-            """
-            [    first view    ][  second view  ][  third view  ][ next scan
-             0, 1, 2, ... , 169, 170,  ... , 339, 340,  ..., 509, 510,
-            """
-            i = img_count
+        v3_mean = np.mean(np.array(vol_3_dice), axis=0)
+        v3_std = np.std(np.array(vol_3_dice), axis=0)
+        print(f"view 3 dice: mean={v3_mean}, std={v3_std}")
 
-            true_mask = torch.cat(truths[i:i + dataset.image_dims[0]])
-
-            volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]])
-            volume_to_nii(volume1, "pred1" + id)
-
-            i += dataset.image_dims[0]
-            pbar.update(1)
-
-            # permute rotates the volume image to match the ground truth label
-            volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
-            volume_to_nii(volume2, "pred2" + id)
-
-            i += dataset.image_dims[1]
-            pbar.update(1)
-
-            volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]]).permute(2, 1, 3, 0)
-            i += dataset.image_dims[2]
-            volume_to_nii(volume3, "pred3" + id)
-            pbar.update(1)
-
-            avg_volume = (volume1 + volume2 + volume3) / 3.0
-            logging.info(f"dice scores:\n  tibia: {dice(avg_volume, true_mask, 1)}\n  femoral cartilage: {dice(avg_volume, true_mask, 2)}\n  tibial cartilage: {dice(avg_volume, true_mask, 3)}")
-            volume_to_nii(avg_volume, "avgpred" + id)
-
-            img_count += i
-
-
-
+        avg_mean = np.mean(np.array(dice_sums), axis=0)
+        avg_std = np.std(np.array(dice_sums), axis=0)
+        print(f"avg volume: mean={avg_mean}, std={avg_std}")

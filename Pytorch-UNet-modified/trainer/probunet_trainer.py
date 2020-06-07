@@ -9,11 +9,11 @@ from dice_loss import dice_coeff
 
 class ProbUNetTrainer(Trainer):
 
-    def __init__(self, device, n_channels=1, n_classes=1, load_model=None, latent_dim=6):
+    def __init__(self, device, n_channels=1, n_classes=1, load_model=None, latent_dim=6, beta=10):
         self.device = device
         self.mask_type = torch.float32
         self.name = "probunet"
-        self.net = ProbabilisticUnet(input_channels=n_channels, num_classes=n_classes, num_filters=[64,128,256,512,1024], latent_dim=latent_dim, no_convs_fcomb=4, beta=10.0)
+        self.net = ProbabilisticUnet(input_channels=n_channels, num_classes=n_classes, num_filters=[64,128,256,512,1024], latent_dim=latent_dim, no_convs_fcomb=4, beta=beta)
 
         if load_model is not None:
 

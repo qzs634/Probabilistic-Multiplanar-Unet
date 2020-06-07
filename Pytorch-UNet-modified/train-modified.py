@@ -254,26 +254,25 @@ if __name__ == '__main__':
     # faster convolutions, but more memory
     # cudnn.benchmark = True
 
-    learning_rates = [1e-2, 5e-3, 1e-3, 1e-4]
+    learning_rates = [1e-4]
     latent_dim = [6, 12]
+    betas = [1, 10]
 
     try:
-        for ld in latent_dim:
-            for lr in learning_rates:
-                trainer = ProbUNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load, latent_dim=ld)
-                train_net(trainer,
-                              epochs=args.epochs,
-                              batch_size=args.batchsize,
-                              lr=lr,
-                              lrf= 0.1,
-                              lrp= 2,
-                              om=args.om,
-                              device=device,
-                              val_percent=args.val / 100)
-                global_counter += 1
-                del trainer
-                torch.cuda.empty_cache()
-                gc.collect()
+        trainer = ProbUNetTrainer(device, n_channels=1, n_classes=3, load_model=args.load, latent_dim=6, beta=10)
+        train_net(trainer,
+                      epochs=args.epochs,
+                      batch_size=args.batchsize,
+                      lr=args.lr,
+                      lrf= 0.9,
+                      lrp= 2,
+                      om=args.om,
+                      device=device,
+                      val_percent=args.val / 100)
+        global_counter += 1
+        del trainer
+        torch.cuda.empty_cache()
+        gc.collect()
 
     except KeyboardInterrupt:
         torch.save(trainer.net.state_dict(), 'INTERRUPTED.pth')

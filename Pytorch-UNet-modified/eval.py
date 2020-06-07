@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import gc
 import argparse
 import logging
 from dice_loss import dice_coeff
@@ -33,6 +34,7 @@ def get_args():
                         help='image and label superdirs.')
 
     return parser.parse_args()
+
 
 def dice(pred, truth, class_index):
     max_idx = torch.argmax(pred, 1, keepdim=True)
@@ -104,7 +106,7 @@ if __name__ == "__main__":
     predicted = []
     truths = []
 
-    dice_sums = np.array([0.0] * (train.net.n_classes - 1))
+    dice_sums = []#np.array([0.0] * (train.net.n_classes - 1))
     best_volume = None
     true_volume = None
     best_index = 0
@@ -112,6 +114,10 @@ if __name__ == "__main__":
 
     slice_count = 0
     img_count = 0
+
+    vol_1_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
+    vol_2_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
+    vol_3_dice = [] #np.array([0.0] * (train.net.n_classes - 1))
     with tqdm(total=N, desc=f'Predictions ', unit='img') as pbar:
         for data in loader:
             img = data['image']
@@ -122,9 +128,10 @@ if __name__ == "__main__":
             truths.append(true_mask)
 
             with torch.no_grad():
-                pred_mask = train.predict(img, true_mask)
+                pred_masks = train.predict(img, true_mask)
 
-            probs = softmax(pred_mask, dim=1)
+
+            probs = softmax(pred_masks, dim=1)
 
             predicted.append(probs)
             slice_count += 1
@@ -132,23 +139,28 @@ if __name__ == "__main__":
                 """
                 slice count is equal to all slices in volume
                 """
+
                 i = 0
                 predicted = np.array(predicted)
 
                 true_mask = torch.cat(truths[i:i + dataset.image_dims[0]])
                 true_mask = slices_to_volume(true_mask)
 
-                volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]])
+                volume1 = slices_to_volume(predicted[i:i + dataset.image_dims[0]]) # [1, 3, 256, 256, 256]
+                vol_1_dice.append(np.array([dice(volume1, true_mask, 1), dice(volume1, true_mask, 2)]))
                 i += dataset.image_dims[0]
 
                 # permute rotates the volume image to match the ground truth label
                 volume2 = slices_to_volume(predicted[i:i + dataset.image_dims[1]]).permute(2, 1, 0, 3)
+                vol_2_dice.append(np.array([dice(volume2, true_mask, 1), dice(volume2, true_mask, 2)]))
                 i += dataset.image_dims[1]
 
                 volume3 = slices_to_volume(predicted[i:i + dataset.image_dims[2]]).permute(2, 1, 3, 0)
+                vol_3_dice.append(np.array([dice(volume3, true_mask, 1), dice(volume3, true_mask, 2)]))
                 i += dataset.image_dims[2]
 
                 avg_volume = (volume1 + volume2 + volume3) / 3.0
+                volume_to_nii(avg_volume, os.path.join(r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\predictions\probunet-labels", dataset.ids[img_count]))
                 del volume1
                 del volume2
                 del volume3
@@ -156,26 +168,32 @@ if __name__ == "__main__":
 
                 dices = np.array([dice(avg_volume, true_mask, 1), dice(avg_volume, true_mask, 2)])
 
-                dice_sums += dices
-
-                if best_dice is None or (((dice_sums[0] + dice_sums[1]) / 2.) > ((best_dice[0] + best_dice[1]) / 2.)) and all(elem in list(torch.unique(true_mask).cpu().numpy()) for elem in [1, 2]):
-                    best_dice = dices
-                    best_volume = avg_volume
-                    true_volume = true_mask
-                    best_index = img_count
-                    logging.info(f'Best index {best_index}')
+                dice_sums.append(dices)
+                del avg_volume
 
                 img_count += 1
-
                 slice_count = 0
                 predicted = []
                 truths = []
 
+                gc.collect()
+
             n += 1
             pbar.update(1)
 
-        volume_to_nii(best_volume, "mpueval")
-        volume_to_nii(true_volume, "mputruth", predicted=False)
         print("best dice: ", best_dice)
-        print("avg dice: ", dice_sums / len(dataset.ids))
+        v1_mean = np.mean(np.array(vol_1_dice), axis=0)
+        v1_std = np.std(np.array(vol_1_dice), axis=0)
+        print(f"view 1 dice: mean={v1_mean}, std={v1_std}")
 
+        v2_mean = np.mean(np.array(vol_2_dice), axis=0)
+        v2_std = np.std(np.array(vol_2_dice), axis=0)
+        print(f"view 2 dice: mean={v2_mean}, std={v2_std}")
+
+        v3_mean = np.mean(np.array(vol_3_dice), axis=0)
+        v3_std = np.std(np.array(vol_3_dice), axis=0)
+        print(f"view 3 dice: mean={v3_mean}, std={v3_std}")
+
+        avg_mean = np.mean(np.array(dice_sums), axis=0)
+        avg_std = np.std(np.array(dice_sums), axis=0)
+        print(f"avg volume: mean={avg_mean}, std={avg_std}")

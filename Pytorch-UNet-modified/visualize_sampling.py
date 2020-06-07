@@ -20,38 +20,46 @@ def visualize_sample(train, slice, true_mask, n_preds, mu, sigma):
 
     predictions = []
     i = 0
-    for z_0 in range(n_preds):
+    for z_0 in range(-(n_preds//2), (n_preds//2) + 1):
         zs = []
-        for z_1 in range(n_preds):
-            z = torch.Tensor([(z_0 - mu[0])/sigma[0], (z_1 - mu[1])/sigma[1]])
-            sample = train.predict(slice, true_mask, z=z)
+        for z_1 in range(-(n_preds//2), (n_preds//2) + 1):
+            z = torch.Tensor([1*z_0*sigma[0] + mu[0], 1*z_1*sigma[1] + mu[1], mu[2], mu[3], mu[4], mu[5]])
+            with torch.no_grad():
+                sample = train.predict(slice, true_mask, z=z)
             mask = train.mask_to_image(sample, prediction=True)
             zs.append(mask)
         predictions.append(zs)
 
-
+    plt.rcParams["figure.figsize"] = (10, 10)
     plt.axis('off')
-    fig, ax = plt.subplots(1 + n_preds, n_preds)
-    ax[0][0].imshow(slice.cpu().numpy().squeeze(), cmap="Greys_r")
+    plt.imsave("viz_scan.png", slice.cpu().numpy().squeeze(), cmap="Greys_r")
     mask_img = train.mask_to_image(true_mask, prediction=False).cpu().numpy().squeeze().transpose(1, 2, 0)
-    ax[0][1].imshow(mask_img.astype(np.uint8) * 255)
+    plt.imsave("viz_label.png", mask_img.astype(np.uint8) * 255)
+
+    fig, ax = plt.subplots(n_preds, n_preds, constrained_layout=True)
+
     i = 0
     for z_0 in range(n_preds):
         for z_1 in range(n_preds):
             pred = predictions[z_0][z_1]
             pred = pred.cpu().numpy().squeeze().transpose(1, 2, 0)
-            ax[z_0 + 1, z_1].imshow(pred.astype(np.uint8) * 255)
+            ax[z_0, z_1].imshow(pred.astype(np.uint8) * 255)
+
+    plt.setp(ax, xticks=[], yticks=[])
     fig.tight_layout()
+    fig.subplots_adjust(wspace=0, hspace=0)
+    #plt.axis('off')
+    fig.savefig("viz_grid.png", dpi=600, cmap="Greys_r")
     plt.show()
 
 
 if __name__ == "__main__":
-    trainer = ProbUNetTrainer(device, n_channels=1, n_classes=4,
-                              load_model=r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\checkpoints\probunet_checkpoint11.pt", latent_dim=2)
+    trainer = ProbUNetTrainer(device, n_channels=1, n_classes=3,
+                              load_model=r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\Pytorch-UNet-modified\checkpoints\probabilisticunet.pt", latent_dim=6)
     #trainer.net.eval()
 
-    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\train\images"  # "data/imgs/"
-    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(old)\train\labels"  # "data/masks/"
+    dir_img = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(Multiclass)\train\images"  # "data/imgs/"
+    dir_mask = r"C:\Users\Niklas Magnussen\Desktop\TheBachelor\data_folder(Multiclass)\train\labels"  # "data/masks/"
     dataset = MRI_Dataset(dir_img, dir_mask, trainer.net.n_classes)
 
     loader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=0, pin_memory=True, drop_last=False)
@@ -63,10 +71,12 @@ if __name__ == "__main__":
         trainer.net.forward(img, mask)
 
     mu = trainer.net.prior_latent_space.base_dist.loc
+    print("mu: ", mu)
     mu = mu.squeeze()
     sigma = trainer.net.prior_latent_space.base_dist.scale
-    sigma = sigma.squeeze()
+    print("sigma: ", sigma)
+    sigma = sigma.squeeze()*40.0
 
-    visualize_sample(trainer, img, mask, 4, mu.squeeze(), sigma.squeeze())
+    visualize_sample(trainer, img, mask, 3, mu.squeeze(), sigma.squeeze())
 
 
