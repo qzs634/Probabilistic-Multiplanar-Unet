@@ -1,5 +1,3 @@
-Probabilistic Multiplanar U-net
+Probabilistic Multiplanar U-net.
 
-#### Environment
-- To create environment: `conda create -n envname python=3.7`
-- To save requirements: `pip freeze > requirements.txt`
+Code for bachelor's thesis in computer science at the university of Copenhagen.
